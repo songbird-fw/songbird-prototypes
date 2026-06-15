@@ -11,14 +11,28 @@
 #define IPPROTO_UDP 17
 #define IPPROTO_ICMP 1
 
-struct firewall_rule {
-    __be32 ip;
-    __be16 port;
+/*
+ * RuleKey: Used as the key for the 'rules' Hash Map.
+ * Includes network fields for matching packets.
+ */
+struct rule_key {
+    __be32 src_ip;
+    __be32 dst_ip;
+    __be16 dst_port;
     __u8 proto;
-    __u8 action;
-    __u32 id;
 };
 
+/*
+ * RuleValue: The action and metadata associated with a rule match.
+ */
+struct rule_value {
+    __u8 action; // 0: DROP, 1: PASS
+    __u32 rule_id;
+};
+
+/*
+ * PacketEvent: Data structure sent to userspace for every packet.
+ */
 struct packet_event {
     __be32 src_ip;
     __be32 dst_ip;
@@ -26,20 +40,66 @@ struct packet_event {
     __be16 dst_port;
     __u8 proto;
     __u8 action;
+    __u32 rule_id;
     __u64 timestamp;
 };
 
+/*
+ * Map 'rules': A Hash map storing firewall rules.
+ * Populated by the Go control plane.
+ */
 struct {
     __uint(type, BPF_MAP_TYPE_HASH);
     __uint(max_entries, 1024);
-    __type(key, __u32);
-    __type(value, struct firewall_rule);
+    __type(key, struct rule_key);
+    __type(value, struct rule_value);
 } rules SEC(".maps");
 
+/*
+ * Map 'events': A Perf Event Array used to stream packet summaries to userspace.
+ */
 struct {
     __uint(type, BPF_MAP_TYPE_PERF_EVENT_ARRAY);
     __uint(max_entries, 1024);
 } events SEC(".maps");
+
+/**
+ * lookup_rule: Performs a multi-pass lookup to support wildcard matching.
+ * Checks for:
+ * 1. Exact match (Source IP, Destination IP, Port, Protocol)
+ * 2. Wildcard Source (any, Destination IP, Port, Protocol)
+ * 3. Global Destination match (any, any, Port, Protocol)
+ * 4. Protocol match (any, any, any, Protocol)
+ */
+static __always_inline struct rule_value *lookup_rule(__be32 src_ip, __be32 dst_ip, __be16 dst_port, __u8 proto) {
+    struct rule_key key = {};
+    struct rule_value *val;
+
+    // Pass 1: Exact match
+    key.src_ip = src_ip;
+    key.dst_ip = dst_ip;
+    key.dst_port = dst_port;
+    key.proto = proto;
+    val = bpf_map_lookup_elem(&rules, &key);
+    if (val) return val;
+
+    // Pass 2: Wildcard Source IP
+    key.src_ip = 0;
+    val = bpf_map_lookup_elem(&rules, &key);
+    if (val) return val;
+
+    // Pass 3: Wildcard Source & Destination IPs
+    key.dst_ip = 0;
+    val = bpf_map_lookup_elem(&rules, &key);
+    if (val) return val;
+
+    // Pass 4: Protocol-only match
+    key.dst_port = 0;
+    val = bpf_map_lookup_elem(&rules, &key);
+    if (val) return val;
+
+    return NULL;
+}
 
 SEC("xdp")
 int firewall_filter(struct xdp_md *ctx) {
@@ -48,69 +108,71 @@ int firewall_filter(struct xdp_md *ctx) {
     struct ethhdr *eth = data;
     struct iphdr *iph;
 
+    // Basic Ethernet header validation
     if (data + sizeof(*eth) > data_end)
         return XDP_PASS;
 
+    // We only process IPv4 traffic
     if (eth->h_proto != bpf_htons(ETH_P_IP))
         return XDP_PASS;
 
+    // Basic IP header validation
     iph = data + sizeof(*eth);
     if ((void *)iph + sizeof(*iph) > data_end)
         return XDP_PASS;
 
-    __be32 dst_ip = iph->daddr;
     __be32 src_ip = iph->saddr;
+    __be32 dst_ip = iph->daddr;
     __u8 protocol = iph->protocol;
+    __be16 src_port = 0;
+    __be16 dst_port = 0;
 
+    // Extract ports for TCP/UDP if the packet is large enough
+    if (protocol == IPPROTO_TCP) {
+        struct tcphdr *tcph = (void *)iph + sizeof(*iph);
+        if ((void *)tcph + sizeof(*tcph) <= data_end) {
+            src_port = tcph->source;
+            dst_port = tcph->dest;
+        }
+    } else if (protocol == IPPROTO_UDP) {
+        struct udphdr *udph = (void *)iph + sizeof(*iph);
+        if ((void *)udph + sizeof(*udph) <= data_end) {
+            src_port = udph->source;
+            dst_port = udph->dest;
+        }
+    }
+
+    // Perform rule lookup in the BPF Map
+    struct rule_value *rule = lookup_rule(src_ip, dst_ip, dst_port, protocol);
+    __u8 action = 0; // DEFAULT ACTION: DROP
+    __u32 rule_id = 0;
+
+    // If a rule match is found, update the action and rule_id
+    if (rule) {
+        action = rule->action;
+        rule_id = rule->rule_id;
+    }
+
+    // Prepare the event structure for userspace logging
     struct packet_event evt = {
         .src_ip = src_ip,
         .dst_ip = dst_ip,
-        .src_port = 0,
-        .dst_port = 0,
+        .src_port = src_port,
+        .dst_port = dst_port,
         .proto = protocol,
-        .action = 1, // default: ACCEPT
+        .action = action,
+        .rule_id = rule_id,
         .timestamp = bpf_ktime_get_ns()
     };
 
-    // ICMP: Block ping from 192.168.1.1 to 192.168.1.100
-    if (protocol == IPPROTO_ICMP) {
-        if (src_ip == bpf_htonl(0xc0a80101) && dst_ip == bpf_htonl(0xc0a80164)) {
-            evt.action = 0; // DROP
-            bpf_perf_event_output(ctx, &events, BPF_F_CURRENT_CPU, &evt, sizeof(evt));
-            return XDP_DROP;
-        }
-        bpf_perf_event_output(ctx, &events, BPF_F_CURRENT_CPU, &evt, sizeof(evt));
-        return XDP_PASS;
-    }
-
-    // TCP: DROP port 80, PASS port 443
-    if (protocol == IPPROTO_TCP) {
-        struct tcphdr *tcph = (void *)iph + sizeof(*iph);
-        if ((void *)tcph + sizeof(*tcph) > data_end)
-            return XDP_PASS;
-
-        __be16 dst_port = tcph->dest;
-        evt.src_port = tcph->source;
-        evt.dst_port = dst_port;
-
-        if (dst_port == bpf_htons(80)) {
-            evt.action = 0; // DROP
-            bpf_perf_event_output(ctx, &events, BPF_F_CURRENT_CPU, &evt, sizeof(evt));
-            return XDP_DROP;
-        }
-
-        if (dst_port == bpf_htons(443)) {
-            evt.action = 1; // PASS
-            bpf_perf_event_output(ctx, &events, BPF_F_CURRENT_CPU, &evt, sizeof(evt));
-            return XDP_PASS;
-        }
-
-        bpf_perf_event_output(ctx, &events, BPF_F_CURRENT_CPU, &evt, sizeof(evt));
-        return XDP_PASS;
-    }
-
-    // All other protocols: log and pass
+    // Output the event to the Perf Ring Buffer
     bpf_perf_event_output(ctx, &events, BPF_F_CURRENT_CPU, &evt, sizeof(evt));
+
+    // Enforce the action
+    if (action == 0) {
+        return XDP_DROP;
+    }
+
     return XDP_PASS;
 }
 
