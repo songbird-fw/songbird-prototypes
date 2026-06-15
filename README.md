@@ -18,18 +18,29 @@ sudo apt-get update
 sudo apt-get install -y clang llvm libbpf-dev libelf-dev
 ```
 
-### Usage
+### How to build into a single binary
 
-1. **Build and Run:**
+To ship this firewall as a single binary, you need to compile the eBPF code first and then build the Go application, which embeds the resulting BPF object file.
+
+1. **Compile the eBPF program:**
    ```bash
    cd PoC-basic-xdp-firewall
-
-   # The Go application will attempt to compile the BPF code automatically,
-   # but you can also do it manually:
    clang -O2 -g -target bpf -I/usr/include/x86_64-linux-gnu -c bpf/firewall.c -o bpf/firewall.bpf.o
+   ```
 
-   # Run the firewall (requires root for eBPF operations)
-   sudo go run main.go
+2. **Build the Go binary:**
+   ```bash
+   go build -o firewall main.go
+   ```
+
+The resulting `firewall` binary is self-contained and includes the compiled eBPF program.
+
+### Usage
+
+1. **Run the firewall (requires root for eBPF operations):**
+   ```bash
+   cd PoC-basic-xdp-firewall
+   sudo ./firewall
    ```
 
 2. **Select Interface:**
