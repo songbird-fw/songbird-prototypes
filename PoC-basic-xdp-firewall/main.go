@@ -17,6 +17,7 @@ import (
 	"github.com/cilium/ebpf/rlimit"
 )
 
+// RuleKey must match the C struct exactly, including padding and alignment.
 type RuleKey struct {
 	SrcIP   uint32
 	DstIP   uint32
@@ -25,12 +26,14 @@ type RuleKey struct {
 	_       uint8 // Padding to align with C struct
 }
 
+// RuleValue must match the C struct exactly.
 type RuleValue struct {
 	Action uint8
 	_      [3]uint8 // Padding
 	RuleID uint32
 }
 
+// PacketEvent is decoded from the raw bytes sent by the BPF program.
 type PacketEvent struct {
 	SrcIP     uint32
 	DstIP     uint32
@@ -47,12 +50,15 @@ func main() {
 	fmt.Println("=== BPF Firewall PROTOTYPE ===")
 	fmt.Println("🔍 Advanced Logging & Scalable Rules (DEFAULT DROP)")
 
+	// Remove memory limits for BPF map allocation
 	if err := rlimit.RemoveMemlock(); err != nil {
 		fmt.Fprintf(os.Stderr, "⚠ %s\n", err)
 	}
 
+	// Load the BPF object file
 	spec, err := ebpf.LoadCollectionSpec("bpf/firewall.bpf.o")
 	if err != nil {
+		// Fallback: Try to compile if the object file is missing
 		fmt.Fprintf(os.Stderr, "Compiling BPF program...\n")
 		cmd := exec.Command("clang", "-O2", "-g", "-target", "bpf", "-I/usr/include/x86_64-linux-gnu", "-c", "bpf/firewall.c", "-o", "bpf/firewall.bpf.o")
 		output, err := cmd.CombinedOutput()
@@ -67,6 +73,7 @@ func main() {
 		}
 	}
 
+	// Create a new BPF collection (programs + maps)
 	coll, err := ebpf.NewCollection(spec)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "❌ %s\n", err)
@@ -78,19 +85,10 @@ func main() {
 	eventsMap := coll.Maps["events"]
 	rulesMap := coll.Maps["rules"]
 
-	// Populate rules
+	// Inject rules into the BPF 'rules' map
 	populateRules(rulesMap)
 
-	fmt.Println("\n=== Getting IP of this machine ===")
-	addrs, _ := net.InterfaceAddrs()
-	for _, addr := range addrs {
-		if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
-			if ipnet.IP.To4() != nil {
-				fmt.Printf("  • %s\n", ipnet.IP.String())
-			}
-		}
-	}
-
+	// User interface for interface selection
 	fmt.Println("\n=== Interfaces ===")
 	interfaces, _ := net.Interfaces()
 	for _, iface := range interfaces {
@@ -112,6 +110,7 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Attach the XDP program to the selected interface
 	xdpLink, err := link.AttachXDP(link.XDPOptions{
 		Program:   xdpProg,
 		Interface: iface.Index,
@@ -123,6 +122,7 @@ func main() {
 	defer xdpLink.Close()
 	fmt.Println("✓ XDP attached to", ifaceName)
 
+	// Start a goroutine to read and display packet events
 	go func() {
 		perfReader, err := perf.NewReader(eventsMap, os.Getpagesize())
 		if err != nil {
@@ -147,6 +147,7 @@ func main() {
 				continue
 			}
 
+			// Decode raw bytes into the PacketEvent struct
 			var event PacketEvent
 			if err := binary.Read(bytes.NewReader(record.RawSample), binary.LittleEndian, &event); err != nil {
 				fmt.Fprintf(os.Stderr, "Failed to decode event: %s\n", err)
@@ -157,18 +158,20 @@ func main() {
 		}
 	}()
 
+	// Wait for interrupt to exit gracefully
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
 	<-sig
 	fmt.Println("\nShutting down...")
 }
 
+// populateRules: Centralized rule definitions.
 func populateRules(rulesMap *ebpf.Map) {
 	rules := []struct {
 		key   RuleKey
 		value RuleValue
 	}{
-		// Rule 1: Allow TCP port 22 (SSH) for everyone - SAFETY FIRST
+		// SAFETY RULE: Allow SSH (TCP port 22) to prevent locking out the user
 		{
 			key: RuleKey{
 				DstPort: htons(22),
@@ -176,7 +179,7 @@ func populateRules(rulesMap *ebpf.Map) {
 			},
 			value: RuleValue{Action: 1, RuleID: 22},
 		},
-		// Rule 2: Allow TCP port 443 (HTTPS) for everyone
+		// Allow HTTPS
 		{
 			key: RuleKey{
 				DstPort: htons(443),
@@ -184,14 +187,14 @@ func populateRules(rulesMap *ebpf.Map) {
 			},
 			value: RuleValue{Action: 1, RuleID: 443},
 		},
-		// Rule 3: Allow ICMP (Ping)
+		// Allow ICMP (Ping)
 		{
 			key: RuleKey{
 				Proto: 1, // ICMP
 			},
 			value: RuleValue{Action: 1, RuleID: 1},
 		},
-		// Rule 4: Specifically Block TCP port 80 (HTTP) - already dropped by default, but let's label it
+		// Explicit DROP for HTTP (Rule ID 80)
 		{
 			key: RuleKey{
 				DstPort: htons(80),
@@ -210,6 +213,7 @@ func populateRules(rulesMap *ebpf.Map) {
 	}
 }
 
+// ipToUint32: Helper to convert IP string to LittleEndian uint32 for BPF map keys.
 func ipToUint32(ipStr string) uint32 {
 	ip := net.ParseIP(ipStr).To4()
 	if ip == nil {
@@ -218,12 +222,14 @@ func ipToUint32(ipStr string) uint32 {
 	return binary.LittleEndian.Uint32(ip)
 }
 
+// htons: Host-to-Network Short (to BigEndian for network field matching)
 func htons(i uint16) uint16 {
 	b := make([]byte, 2)
 	binary.BigEndian.PutUint16(b, i)
 	return binary.LittleEndian.Uint16(b)
 }
 
+// printEvent: Formats and displays a packet event.
 func printEvent(e PacketEvent) {
 	srcIP := make(net.IP, 4)
 	binary.LittleEndian.PutUint32(srcIP, e.SrcIP)
@@ -245,12 +251,14 @@ func printEvent(e PacketEvent) {
 		protoStr = "UDP"
 	}
 
+	// Timestamp is relative to system boot (nanoseconds)
 	duration := time.Duration(e.Timestamp) * time.Nanosecond
 
 	fmt.Printf("[%12s] %s | %s | %s:%d -> %s:%d | Rule=%d\n",
 		duration.String(), actionStr, protoStr, srcIP, ntohs(e.SrcPort), dstIP, ntohs(e.DstPort), e.RuleID)
 }
 
+// ntohs: Network-to-Host Short
 func ntohs(i uint16) uint16 {
 	b := make([]byte, 2)
 	binary.LittleEndian.PutUint16(b, i)
