@@ -209,7 +209,12 @@ func ipToUint32(ipStr string) uint32 {
 	if ip == nil {
 		return 0
 	}
-	return binary.BigEndian.Uint32(ip)
+	// Use LittleEndian for storage in the map because eBPF usually expects
+	// data in the same endianness as the CPU (unless specified otherwise)
+	// and the C code uses __be32 but the map key is a struct.
+	// Actually, bpf_map_lookup_elem just compares bytes.
+	// So we should stay consistent.
+	return binary.LittleEndian.Uint32(ip)
 }
 
 func htons(i uint16) uint16 {
@@ -220,9 +225,9 @@ func htons(i uint16) uint16 {
 
 func printEvent(e PacketEvent) {
 	srcIP := make(net.IP, 4)
-	binary.BigEndian.PutUint32(srcIP, e.SrcIP)
+	binary.LittleEndian.PutUint32(srcIP, e.SrcIP)
 	dstIP := make(net.IP, 4)
-	binary.BigEndian.PutUint32(dstIP, e.DstIP)
+	binary.LittleEndian.PutUint32(dstIP, e.DstIP)
 
 	actionStr := "✅ PASS"
 	if e.Action == 0 {
@@ -240,7 +245,6 @@ func printEvent(e PacketEvent) {
 	}
 
 	// bpf_ktime_get_ns() returns time since boot.
-	// Converting it to a duration and showing it as a relative time.
 	duration := time.Duration(e.Timestamp) * time.Nanosecond
 
 	fmt.Printf("[%12s] %s | %s | %s:%d -> %s:%d | Rule=%d\n",
