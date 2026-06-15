@@ -50,10 +50,7 @@ static __always_inline struct rule_value *lookup_rule(__be32 src_ip, __be32 dst_
     struct rule_key key = {};
     struct rule_value *val;
 
-    // We want to support wildcards. A real-world firewall would use a LPM (Longest Prefix Match) trie
-    // but for this PoC Hash map, we'll try a few combinations.
-
-    // 1. Exact match (src, dst, port, proto)
+    // 1. Exact match
     key.src_ip = src_ip;
     key.dst_ip = dst_ip;
     key.dst_port = dst_port;
@@ -61,17 +58,17 @@ static __always_inline struct rule_value *lookup_rule(__be32 src_ip, __be32 dst_
     val = bpf_map_lookup_elem(&rules, &key);
     if (val) return val;
 
-    // 2. Wildcard Src IP (any, dst, port, proto)
+    // 2. Wildcard Src IP
     key.src_ip = 0;
     val = bpf_map_lookup_elem(&rules, &key);
     if (val) return val;
 
-    // 3. Wildcard Src IP & Dst IP (any, any, port, proto) - common for "port" rules
+    // 3. Wildcard Src IP & Dst IP
     key.dst_ip = 0;
     val = bpf_map_lookup_elem(&rules, &key);
     if (val) return val;
 
-    // 4. Wildcard Src IP, Dst IP & Dst Port (any, any, any, proto) - common for "protocol" rules
+    // 4. Wildcard Src IP, Dst IP & Dst Port
     key.dst_port = 0;
     val = bpf_map_lookup_elem(&rules, &key);
     if (val) return val;
@@ -117,7 +114,7 @@ int firewall_filter(struct xdp_md *ctx) {
     }
 
     struct rule_value *rule = lookup_rule(src_ip, dst_ip, dst_port, protocol);
-    __u8 action = 1; // Default PASS
+    __u8 action = 0; // DEFAULT DROP
     __u32 rule_id = 0;
 
     if (rule) {

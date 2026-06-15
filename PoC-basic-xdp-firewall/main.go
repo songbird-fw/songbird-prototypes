@@ -45,7 +45,7 @@ type PacketEvent struct {
 
 func main() {
 	fmt.Println("=== BPF Firewall PROTOTYPE ===")
-	fmt.Println("🔍 Advanced Logging & Scalable Rules")
+	fmt.Println("🔍 Advanced Logging & Scalable Rules (DEFAULT DROP)")
 
 	if err := rlimit.RemoveMemlock(); err != nil {
 		fmt.Fprintf(os.Stderr, "⚠ %s\n", err)
@@ -168,30 +168,36 @@ func populateRules(rulesMap *ebpf.Map) {
 		key   RuleKey
 		value RuleValue
 	}{
-		// Rule 1: Block ICMP from 192.168.1.1 to 192.168.1.100
+		// Rule 1: Allow TCP port 22 (SSH) for everyone - SAFETY FIRST
 		{
 			key: RuleKey{
-				SrcIP: ipToUint32("192.168.1.1"),
-				DstIP: ipToUint32("192.168.1.100"),
-				Proto: 1, // ICMP
-			},
-			value: RuleValue{Action: 0, RuleID: 1},
-		},
-		// Rule 2: Block TCP port 80 (HTTP) for everyone
-		{
-			key: RuleKey{
-				DstPort: htons(80),
+				DstPort: htons(22),
 				Proto:   6, // TCP
 			},
-			value: RuleValue{Action: 0, RuleID: 2},
+			value: RuleValue{Action: 1, RuleID: 22},
 		},
-		// Rule 3: Allow TCP port 443 (HTTPS) for everyone
+		// Rule 2: Allow TCP port 443 (HTTPS) for everyone
 		{
 			key: RuleKey{
 				DstPort: htons(443),
 				Proto:   6, // TCP
 			},
-			value: RuleValue{Action: 1, RuleID: 3},
+			value: RuleValue{Action: 1, RuleID: 443},
+		},
+		// Rule 3: Allow ICMP (Ping)
+		{
+			key: RuleKey{
+				Proto: 1, // ICMP
+			},
+			value: RuleValue{Action: 1, RuleID: 1},
+		},
+		// Rule 4: Specifically Block TCP port 80 (HTTP) - already dropped by default, but let's label it
+		{
+			key: RuleKey{
+				DstPort: htons(80),
+				Proto:   6, // TCP
+			},
+			value: RuleValue{Action: 0, RuleID: 80},
 		},
 	}
 
@@ -209,11 +215,6 @@ func ipToUint32(ipStr string) uint32 {
 	if ip == nil {
 		return 0
 	}
-	// Use LittleEndian for storage in the map because eBPF usually expects
-	// data in the same endianness as the CPU (unless specified otherwise)
-	// and the C code uses __be32 but the map key is a struct.
-	// Actually, bpf_map_lookup_elem just compares bytes.
-	// So we should stay consistent.
 	return binary.LittleEndian.Uint32(ip)
 }
 
@@ -244,7 +245,6 @@ func printEvent(e PacketEvent) {
 		protoStr = "UDP"
 	}
 
-	// bpf_ktime_get_ns() returns time since boot.
 	duration := time.Duration(e.Timestamp) * time.Nanosecond
 
 	fmt.Printf("[%12s] %s | %s | %s:%d -> %s:%d | Rule=%d\n",
