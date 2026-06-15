@@ -62,3 +62,17 @@ sudo go test -v .
 - **Dynamic Management**: Rules are managed from userspace (Go) without needing to recompile the kernel-side code.
 - **Wildcard Support**: Supports rules for specific IPs, ports, or entire protocols.
 - **Real-time Logging**: Uses BPF Perf Events to send packet summaries to userspace for monitoring.
+
+
+## 2. Proof of Concept - Hadron OS
+
+This PoC test the use of Hadron OS for our eBPF based firewall.
+
+### Custom ISO build
+```
+cd PoC-hadron-os
+docker build -t songbird-hadron:0.1.1 --build-arg=VERSION=0.1.1 .
+docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v $PWD/build/:/output \
+        quay.io/kairos/auroraboot:v0.20.1 build-iso --output /output/ oci:songbird-hadron:0.1.1
+```
+The custom iso will be in the build folder.
