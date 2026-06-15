@@ -2,11 +2,11 @@ package main
 
 import (
 	"bytes"
+	_ "embed"
 	"encoding/binary"
 	"fmt"
 	"net"
 	"os"
-	"os/exec"
 	"os/signal"
 	"syscall"
 	"time"
@@ -46,6 +46,9 @@ type PacketEvent struct {
 	Timestamp uint64
 }
 
+//go:embed bpf/firewall.bpf.o
+var bpfProg []byte
+
 func main() {
 	fmt.Println("=== BPF Firewall PROTOTYPE ===")
 	fmt.Println("🔍 Advanced Logging & Scalable Rules (DEFAULT DROP)")
@@ -55,22 +58,11 @@ func main() {
 		fmt.Fprintf(os.Stderr, "⚠ %s\n", err)
 	}
 
-	// Load the BPF object file
-	spec, err := ebpf.LoadCollectionSpec("bpf/firewall.bpf.o")
+	// Load the BPF object file from embedded bytes
+	spec, err := ebpf.LoadCollectionSpecFromReader(bytes.NewReader(bpfProg))
 	if err != nil {
-		// Fallback: Try to compile if the object file is missing
-		fmt.Fprintf(os.Stderr, "Compiling BPF program...\n")
-		cmd := exec.Command("clang", "-O2", "-g", "-target", "bpf", "-I/usr/include/x86_64-linux-gnu", "-c", "bpf/firewall.c", "-o", "bpf/firewall.bpf.o")
-		output, err := cmd.CombinedOutput()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "❌ Compilation failed: %s\n%s\n", err, string(output))
-			os.Exit(1)
-		}
-		spec, err = ebpf.LoadCollectionSpec("bpf/firewall.bpf.o")
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "❌ Failed to load spec: %s\n", err)
-			os.Exit(1)
-		}
+		fmt.Fprintf(os.Stderr, "❌ Failed to load embedded BPF spec: %s\n", err)
+		os.Exit(1)
 	}
 
 	// Create a new BPF collection (programs + maps)

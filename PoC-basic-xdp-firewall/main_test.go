@@ -1,17 +1,20 @@
 package main
 
 import (
+	"bytes"
 	"testing"
+
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/rlimit"
 )
 
 func TestLoadObjects(t *testing.T) {
 	if err := rlimit.RemoveMemlock(); err != nil {
-		t.Fatal(err)
+		// Ignore error if not root, but some parts of the test might fail
+		t.Logf("Warning: failed to set memlock rlimit: %v", err)
 	}
 
-	spec, err := ebpf.LoadCollectionSpec("bpf/firewall.bpf.o")
+	spec, err := ebpf.LoadCollectionSpecFromReader(bytes.NewReader(bpfProg))
 	if err != nil {
 		t.Fatalf("Failed to load BPF spec: %v", err)
 	}
