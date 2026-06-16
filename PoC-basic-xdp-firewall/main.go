@@ -4,6 +4,7 @@ import (
 	"bytes"
 	_ "embed"
 	"encoding/binary"
+	"flag"
 	"fmt"
 	"net"
 	"os"
@@ -50,6 +51,10 @@ type PacketEvent struct {
 var bpfProg []byte
 
 func main() {
+	var ifaceName string
+	flag.StringVar(&ifaceName, "iface", "", "Network interface to attach the firewall to")
+	flag.Parse()
+
 	fmt.Println("=== BPF Firewall PROTOTYPE ===")
 	fmt.Println("🔍 Advanced Logging & Scalable Rules (DEFAULT DROP)")
 
@@ -80,20 +85,21 @@ func main() {
 	// Inject rules into the BPF 'rules' map
 	populateRules(rulesMap)
 
-	// User interface for interface selection
-	fmt.Println("\n=== Interfaces ===")
-	interfaces, _ := net.Interfaces()
-	for _, iface := range interfaces {
-		if iface.Flags&net.FlagUp != 0 && iface.Flags&net.FlagLoopback == 0 {
-			fmt.Printf("  • %s (idx=%d)\n", iface.Name, iface.Index)
-		}
-	}
-
-	fmt.Print("\nInterface to attach (or press Enter for 'eth0'): ")
-	var ifaceName string
-	fmt.Scanln(&ifaceName)
 	if ifaceName == "" {
-		ifaceName = "eth0"
+		// User interface for interface selection
+		fmt.Println("\n=== Interfaces ===")
+		interfaces, _ := net.Interfaces()
+		for _, iface := range interfaces {
+			if iface.Flags&net.FlagUp != 0 && iface.Flags&net.FlagLoopback == 0 {
+				fmt.Printf("  • %s (idx=%d)\n", iface.Name, iface.Index)
+			}
+		}
+
+		fmt.Print("\nInterface to attach (or press Enter for 'eth0'): ")
+		fmt.Scanln(&ifaceName)
+		if ifaceName == "" {
+			ifaceName = "eth0"
+		}
 	}
 
 	iface, err := net.InterfaceByName(ifaceName)
