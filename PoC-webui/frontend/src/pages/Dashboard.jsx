@@ -1,149 +1,198 @@
 import React from 'react';
 import {
+  Activity,
+  Cpu,
+  Database,
+  Clock,
+  Terminal,
+  Wifi,
+  Power,
+  AlertCircle,
+  BarChart3
+} from 'lucide-react';
+import { Line } from 'react-chartjs-2';
+import {
   Chart as ChartJS,
   CategoryScale,
   LinearScale,
   PointElement,
   LineElement,
-  BarElement,
   Title,
   Tooltip,
   Legend,
-  ArcElement,
+  Filler,
 } from 'chart.js';
-import { Line, Bar, Doughnut } from 'react-chartjs-2';
-import { Activity, ShieldAlert, Zap, Globe } from 'lucide-react';
 
 ChartJS.register(
   CategoryScale,
   LinearScale,
   PointElement,
   LineElement,
-  BarElement,
-  ArcElement,
   Title,
   Tooltip,
-  Legend
+  Legend,
+  Filler
 );
 
 const Dashboard = () => {
-  const lineData = {
-    labels: ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00'],
+  const throughputData = {
+    labels: Array.from({ length: 20 }, (_, i) => i),
     datasets: [
       {
-        label: 'Blocked Attacks',
-        data: [120, 190, 300, 250, 420, 310],
-        borderColor: 'rgb(239, 68, 68)',
-        backgroundColor: 'rgba(239, 68, 68, 0.5)',
+        label: 'WAN In',
+        data: Array.from({ length: 20 }, () => Math.floor(Math.random() * 500) + 100),
+        borderColor: '#3b82f6',
+        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+        fill: true,
         tension: 0.4,
+        pointRadius: 0,
       },
       {
-        label: 'Allowed Traffic (GB)',
-        data: [45, 52, 85, 92, 110, 88],
-        borderColor: 'rgb(59, 130, 246)',
-        backgroundColor: 'rgba(59, 130, 246, 0.5)',
+        label: 'WAN Out',
+        data: Array.from({ length: 20 }, () => Math.floor(Math.random() * 200) + 50),
+        borderColor: '#10b981',
+        backgroundColor: 'rgba(16, 185, 129, 0.1)',
+        fill: true,
         tension: 0.4,
+        pointRadius: 0,
       },
     ],
   };
 
-  const barData = {
-    labels: ['TCP', 'UDP', 'ICMP', 'HTTP', 'HTTPS', 'DNS'],
-    datasets: [
-      {
-        label: 'Traffic Distribution',
-        data: [65, 45, 12, 88, 120, 35],
-        backgroundColor: 'rgba(99, 102, 241, 0.8)',
-      },
-    ],
+  const chartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { display: false },
+      y: {
+        beginAtZero: true,
+        grid: { color: '#f1f5f9' },
+        ticks: { font: { size: 10 }, color: '#94a3b8' }
+      }
+    }
   };
-
-  const doughnutData = {
-    labels: ['Safe', 'Suspicious', 'Malicious'],
-    datasets: [
-      {
-        data: [85, 10, 5],
-        backgroundColor: [
-          'rgba(34, 197, 94, 0.8)',
-          'rgba(234, 179, 8, 0.8)',
-          'rgba(239, 68, 68, 0.8)',
-        ],
-      },
-    ],
-  };
-
-  const stats = [
-    { name: 'Total Requests', value: '1.2M', icon: <Activity className="text-blue-500" />, change: '+12%' },
-    { name: 'Blocked Threats', value: '14,203', icon: <ShieldAlert className="text-red-500" />, change: '+5%' },
-    { name: 'Avg Latency', value: '12ms', icon: <Zap className="text-yellow-500" />, change: '-2ms' },
-    { name: 'Active Geo-Blocks', value: '42', icon: <Globe className="text-purple-500" />, change: '0' },
-  ];
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">Network Overview</h1>
-        <p className="text-slate-500">Real-time firewall monitoring and statistics.</p>
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-semibold text-slate-900">System Dashboard</h1>
+        <div className="flex gap-2">
+          <span className="flex items-center gap-1.5 px-3 py-1 bg-green-50 text-green-700 text-xs font-bold rounded border border-green-100">
+            <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></div>
+            SYSTEM READY
+          </span>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {stats.map((stat) => (
-          <div key={stat.name} className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div className="p-2 bg-slate-50 rounded-lg">{stat.icon}</div>
-              <span className={`text-xs font-medium px-2 py-1 rounded-full ${
-                stat.change.startsWith('+') ? 'bg-green-100 text-green-700' :
-                stat.change === '0' ? 'bg-slate-100 text-slate-700' : 'bg-blue-100 text-blue-700'
-              }`}>
-                {stat.change}
-              </span>
-            </div>
-            <div className="mt-4">
-              <h3 className="text-sm font-medium text-slate-500">{stat.name}</h3>
-              <p className="text-2xl font-bold text-slate-900">{stat.value}</p>
-            </div>
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* System Information Widget */}
+        <div className="lg:col-span-4 bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
+          <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
+              <Cpu size={14} /> System Information
+            </h3>
           </div>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-          <h3 className="text-lg font-semibold mb-6">Traffic Analysis</h3>
-          <Line data={lineData} options={{ responsive: true, maintainAspectRatio: true }} />
-        </div>
-        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-          <h3 className="text-lg font-semibold mb-6">Protocol Distribution</h3>
-          <Bar data={barData} options={{ responsive: true, maintainAspectRatio: true }} />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col items-center">
-          <h3 className="text-lg font-semibold mb-6 w-full text-left">Threat Assessment</h3>
-          <div className="w-full max-w-[250px]">
-            <Doughnut data={doughnutData} />
-          </div>
-        </div>
-        <div className="lg:col-span-2 bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-          <h3 className="text-lg font-semibold mb-4">Recent Security Events</h3>
-          <div className="space-y-4">
-            {[
-              { time: '14:22:01', event: 'DDoS mitigation triggered', source: '192.168.1.104', status: 'Blocked' },
-              { time: '14:15:33', event: 'Port scan detected', source: '45.12.33.19', status: 'Blocked' },
-              { time: '14:02:12', event: 'SQL Injection attempt', source: '10.0.4.55', status: 'Flagged' },
-            ].map((event, i) => (
-              <div key={i} className="flex items-center justify-between py-3 border-b border-slate-100 last:border-0">
-                <div>
-                  <p className="text-sm font-medium text-slate-900">{event.event}</p>
-                  <p className="text-xs text-slate-500">{event.time} • Source: {event.source}</p>
+          <div className="p-4 space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <p className="text-[10px] text-slate-400 font-bold uppercase">Model</p>
+                <p className="text-sm font-medium text-slate-700">Songbird FW-100D</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-[10px] text-slate-400 font-bold uppercase">Uptime</p>
+                <p className="text-sm font-medium text-slate-700">12d 4h 33m</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-[10px] text-slate-400 font-bold uppercase">CPU Usage</p>
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                    <div className="h-full bg-blue-500 rounded-full" style={{ width: '24%' }}></div>
+                  </div>
+                  <span className="text-xs font-bold text-slate-600">24%</span>
                 </div>
-                <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-full ${
-                  event.status === 'Blocked' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'
-                }`}>
-                  {event.status}
-                </span>
+              </div>
+              <div className="space-y-1">
+                <p className="text-[10px] text-slate-400 font-bold uppercase">Memory</p>
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                    <div className="h-full bg-blue-500 rounded-full" style={{ width: '42%' }}></div>
+                  </div>
+                  <span className="text-xs font-bold text-slate-600">42%</span>
+                </div>
+              </div>
+            </div>
+            <div className="pt-4 border-t border-slate-50">
+              <div className="flex items-center justify-between text-xs text-slate-500">
+                <span>Firmware Version</span>
+                <span className="font-mono font-bold text-slate-700">v0.1.1-stable</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Interface Throughput Widget */}
+        <div className="lg:col-span-8 bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
+          <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
+              <Wifi size={14} /> Interface Throughput (Kbps)
+            </h3>
+            <div className="flex gap-4">
+               <div className="flex items-center gap-1.5 text-[10px] text-slate-500 font-bold uppercase">
+                 <div className="w-2 h-2 rounded-full bg-blue-500"></div> WAN In
+               </div>
+               <div className="flex items-center gap-1.5 text-[10px] text-slate-500 font-bold uppercase">
+                 <div className="w-2 h-2 rounded-full bg-green-500"></div> WAN Out
+               </div>
+            </div>
+          </div>
+          <div className="p-4 h-[180px]">
+            <Line data={throughputData} options={chartOptions} />
+          </div>
+        </div>
+
+        {/* Services Status Widget */}
+        <div className="lg:col-span-5 bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
+          <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/50">
+            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
+              <Database size={14} /> Services Status
+            </h3>
+          </div>
+          <div className="p-0">
+            {[
+              { name: 'Firewall Engine', status: 'Running', uptime: '12d 4h', color: 'text-green-500' },
+              { name: 'Intrusion Detection', status: 'Running', uptime: '5d 22h', color: 'text-green-500' },
+              { name: 'VPN Gateway', status: 'Standby', uptime: '-', color: 'text-slate-400' },
+              { name: 'DHCP Server', status: 'Running', uptime: '12d 4h', color: 'text-green-500' },
+              { name: 'DNS Forwarder', status: 'Error', uptime: '0m', color: 'text-red-500' },
+            ].map((svc) => (
+              <div key={svc.name} className="flex items-center justify-between px-4 py-3 border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors">
+                <span className="text-sm font-medium text-slate-700">{svc.name}</span>
+                <div className="flex items-center gap-4">
+                  <span className="text-[10px] text-slate-400 font-bold uppercase">{svc.uptime}</span>
+                  <span className={`text-[10px] font-black uppercase tracking-tighter ${svc.color}`}>{svc.status}</span>
+                </div>
               </div>
             ))}
+          </div>
+        </div>
+
+        {/* Live Logs Widget */}
+        <div className="lg:col-span-7 bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden flex flex-col">
+          <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
+              <Terminal size={14} /> Live Firewall Logs
+            </h3>
+            <button className="text-[10px] font-bold text-blue-600 uppercase hover:underline">View All</button>
+          </div>
+          <div className="flex-1 bg-slate-900 font-mono text-[11px] p-4 text-slate-300 space-y-1 overflow-y-auto max-h-[300px]">
+            <p><span className="text-slate-500">[14:45:01]</span> <span className="text-green-400">PASS</span> 192.168.1.10:54223 {"->"} 8.8.8.8:53 (UDP)</p>
+            <p><span className="text-slate-500">[14:45:02]</span> <span className="text-red-400">DROP</span> 45.12.33.19:1232 {"->"} 192.168.1.1:22 (TCP) [GEO-BLOCK]</p>
+            <p><span className="text-slate-500">[14:45:04]</span> <span className="text-green-400">PASS</span> 192.168.1.15:80 {"->"} 203.0.113.10:443 (TCP)</p>
+            <p><span className="text-slate-500">[14:45:07]</span> <span className="text-yellow-400">WARN</span> 10.0.4.55:3321 {"->"} 1.1.1.1:53 (UDP) [ICMP RATE LIMIT]</p>
+            <p><span className="text-slate-500">[14:45:10]</span> <span className="text-red-400">DROP</span> 185.122.2.1:54332 {"->"} 192.168.1.100:3389 (TCP) [MALICIOUS]</p>
+            <p><span className="text-slate-500">[14:45:12]</span> <span className="text-green-400">PASS</span> 192.168.1.10:44321 {"->"} 142.250.1.1:443 (TCP)</p>
+            <p><span className="text-slate-500">[14:45:15]</span> <span className="text-green-400">PASS</span> 192.168.1.20:51123 {"->"} 10.0.1.55:80 (TCP)</p>
           </div>
         </div>
       </div>

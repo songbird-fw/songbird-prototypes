@@ -4,6 +4,7 @@ import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import Policies from './pages/Policies';
 import Users from './pages/Users';
+import Objects from './pages/Objects';
 
 function App() {
   return (
@@ -12,6 +13,7 @@ function App() {
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/policies" element={<Policies />} />
+          <Route path="/objects" element={<Objects />} />
           <Route path="/users" element={<Users />} />
         </Routes>
       </Layout>

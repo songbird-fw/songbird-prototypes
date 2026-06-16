@@ -1,34 +1,38 @@
-# PoC WebUI
+# PoC Firewall WebUI
 
-This is a proof of concept for a firewall WebUI.
+This is a proof-of-concept web interface for a firewall implementation.
+
+## Requirements
+- Go 1.23+
+- Node.js & npm
+
+## Structure
+- `frontend/`: React + Tailwind CSS frontend application.
+- `main.go`: Go backend using Echo framework, serves the embedded frontend assets.
+
+## How to build and run
+
+1. **Build the frontend:**
+   ```bash
+   cd frontend
+   npm install
+   npm run build
+   cd ..
+   ```
+
+2. **Run the application:**
+   ```bash
+   go run main.go
+   ```
+   The application will be available at `http://localhost:8080`.
+
+3. **Build the single binary:**
+   ```bash
+   CGO_ENABLED=0 go build -o firewall-webui main.go
+   ```
 
 ## Features
-- **Dashboard**: Real-time traffic analysis and threat assessment graphs.
-- **Firewall Policies**: Management interface for network security rules.
-- **Users**: User management and access control.
-- **Single Binary**: The React frontend is embedded into the Go backend for easy deployment.
-
-## Tech Stack
-- **Frontend**: React, Tailwind CSS, Chart.js, Lucide React, React Router.
-- **Backend**: Go (Echo framework).
-
-## How to Build
-
-### 1. Build the Frontend
-```bash
-cd frontend
-npm install
-npm run build
-```
-
-### 2. Build the Go Backend
-```bash
-cd ..
-go build -o webui main.go
-```
-
-## How to Run
-```bash
-./webui
-```
-The server will start on `http://localhost:8080`.
+- **Dashboard:** OPNsense-style widgets for system info, throughput (Chart.js), services, and live logs.
+- **Firewall Policies:** Fortigate-style collapsible policy groups with detailed traffic inspection rules.
+- **Policy Objects:** Manage Addresses, Virtual IPs, and Services.
+- **User Management:** Administrator account management.
