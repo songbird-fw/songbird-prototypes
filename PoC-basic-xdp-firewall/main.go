@@ -17,35 +17,34 @@ import (
 	"github.com/cilium/ebpf/perf"
 	"github.com/cilium/ebpf/rlimit"
 	"gopkg.in/yaml.v3"
+	"sort"
+	"strings"
 )
 
 type ConfigRule struct {
-	ID      uint32 `yaml:"id"`
-	SrcIP   string `yaml:"src_ip"`
-	DstIP   string `yaml:"dst_ip"`
-	DstPort uint16 `yaml:"dst_port"`
-	Proto   string `yaml:"proto"`
-	Action  string `yaml:"action"`
+	ID       uint32 `yaml:"id"`
+	Priority uint32 `yaml:"priority"`
+	SrcCIDR  string `yaml:"src_cidr"`
+	DstCIDR  string `yaml:"dst_cidr"`
+	DstPort  uint16 `yaml:"dst_port"`
+	Proto    string `yaml:"proto"`
+	Action   string `yaml:"action"`
 }
 
 type Config struct {
 	Rules []ConfigRule `yaml:"rules"`
 }
 
-// RuleKey must match the C struct exactly, including padding and alignment.
-type RuleKey struct {
+// FirewallRule must match the C struct exactly.
+type FirewallRule struct {
 	SrcIP   uint32
+	SrcMask uint32
 	DstIP   uint32
+	DstMask uint32
 	DstPort uint16
 	Proto   uint8
-	_       uint8 // Padding to align with C struct
-}
-
-// RuleValue must match the C struct exactly.
-type RuleValue struct {
-	Action uint8
-	_      [3]uint8 // Padding
-	RuleID uint32
+	Action  uint8
+	RuleID  uint32
 }
 
 // PacketEvent is decoded from the raw bytes sent by the BPF program.
@@ -95,6 +94,7 @@ func main() {
 	xdpProg := coll.Programs["firewall_filter"]
 	eventsMap := coll.Maps["events"]
 	rulesMap := coll.Maps["rules"]
+	configMap := coll.Maps["config"]
 
 	// Periodic configuration polling
 	const configPath = "rules.yaml"
@@ -116,7 +116,7 @@ func main() {
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "❌ Failed to load config: %v\n", err)
 				} else {
-					syncRules(rulesMap, config)
+					syncRules(rulesMap, configMap, config)
 					lastModTime = info.ModTime()
 					fmt.Println("--- Config Synced ---")
 				}
@@ -203,6 +203,48 @@ func main() {
 	fmt.Println("\nShutting down...")
 }
 
+// parseCIDR: Helper to convert CIDR string to uint32 IP and Mask.
+// We return them as host-order uint32 to match how BPF loads be32 into registers on LE hosts.
+func parseCIDR(cidrStr string) (uint32, uint32) {
+	if cidrStr == "" {
+		return 0, 0
+	}
+	ip, ipNet, err := net.ParseCIDR(cidrStr)
+	if err != nil {
+		// Fallback to single IP if not CIDR
+		ipv4 := net.ParseIP(cidrStr).To4()
+		if ipv4 == nil {
+			return 0xFFFFFFFF, 0xFFFFFFFF
+		}
+		// Return IP in LittleEndian (host order for x86)
+		return binary.LittleEndian.Uint32(ipv4), 0xFFFFFFFF
+	}
+
+	ipv4 := ip.To4()
+	if ipv4 == nil {
+		return 0xFFFFFFFF, 0xFFFFFFFF
+	}
+
+	mask := binary.BigEndian.Uint32(ipNet.Mask)
+	// Mask from binary.BigEndian.Uint32 is already in a format where bitwise AND works
+	// if the IP is also handled the same way.
+	// However, net.IP bytes are [192, 168, 1, 0].
+	// binary.LittleEndian.Uint32([192, 168, 1, 0]) -> 0x0001A8C0
+	// binary.BigEndian.Uint32([192, 168, 1, 0]) -> 0xC0A80100
+
+	// If BPF does: src_ip & mask
+	// On LE: src_ip (from packet) is loaded into register.
+	// Packet: [C0, A8, 01, 01]
+	// Register: 0x0101A8C0 (Little Endian)
+
+	// So we should use LittleEndian.Uint32 for both to match host register layout.
+
+	maskBytes := make([]byte, 4)
+	binary.BigEndian.PutUint32(maskBytes, mask)
+
+	return binary.LittleEndian.Uint32(ipv4), binary.LittleEndian.Uint32(maskBytes)
+}
+
 // ipToUint32: Helper to convert IP string to LittleEndian uint32 for BPF map keys.
 func ipToUint32(ipStr string) uint32 {
 	ip := net.ParseIP(ipStr).To4()
@@ -270,7 +312,7 @@ func loadConfig(path string) (*Config, error) {
 }
 
 func protoToUint8(proto string) uint8 {
-	switch proto {
+	switch strings.ToUpper(proto) {
 	case "ICMP":
 		return 1
 	case "TCP":
@@ -282,59 +324,47 @@ func protoToUint8(proto string) uint8 {
 	}
 }
 
-func syncRules(rulesMap *ebpf.Map, config *Config) {
-	// 1. Convert config rules to a map for easy lookup
-	newRules := make(map[RuleKey]RuleValue)
-	for _, cr := range config.Rules {
-		key := RuleKey{
-			SrcIP:   ipToUint32(cr.SrcIP),
-			DstIP:   ipToUint32(cr.DstIP),
+func syncRules(rulesMap *ebpf.Map, configMap *ebpf.Map, config *Config) {
+	// 1. Sort rules by priority
+	sort.Slice(config.Rules, func(i, j int) bool {
+		return config.Rules[i].Priority < config.Rules[j].Priority
+	})
+
+	// 2. Push rules to the Array map
+	var i uint32
+	for i = 0; i < uint32(len(config.Rules)) && i < 256; i++ {
+		cr := config.Rules[i]
+		srcIP, srcMask := parseCIDR(cr.SrcCIDR)
+		dstIP, dstMask := parseCIDR(cr.DstCIDR)
+
+		rule := FirewallRule{
+			SrcIP:   srcIP,
+			SrcMask: srcMask,
+			DstIP:   dstIP,
+			DstMask: dstMask,
 			DstPort: htons(cr.DstPort),
 			Proto:   protoToUint8(cr.Proto),
+			Action:  actionToUint8(cr.Action),
+			RuleID:  cr.ID,
 		}
-		val := RuleValue{
-			Action: actionToUint8(cr.Action),
-			RuleID: cr.ID,
-		}
-		newRules[key] = val
-	}
 
-	// 2. Iterate through existing BPF map and delete rules not in the new config
-	var key RuleKey
-	var val RuleValue
-	iter := rulesMap.Iterate()
-	toDelete := []RuleKey{}
-	for iter.Next(&key, &val) {
-		if _, ok := newRules[key]; !ok {
-			toDelete = append(toDelete, key)
-		}
-	}
-	if err := iter.Err(); err != nil {
-		fmt.Fprintf(os.Stderr, "Error iterating rules map: %v\n", err)
-	}
-
-	for _, k := range toDelete {
-		if err := rulesMap.Delete(k); err != nil {
-			fmt.Printf("Failed to delete old rule: %v\n", err)
+		if err := rulesMap.Put(i, rule); err != nil {
+			fmt.Printf("Failed to update rule at index %d: %v\n", i, err)
 		} else {
-			fmt.Println("Deleted old rule from BPF map")
+			fmt.Printf("Synced rule %d (Priority %d) to index %d\n", cr.ID, cr.Priority, i)
 		}
 	}
 
-	// 3. Add or update rules from the config
-	for k, v := range newRules {
-		if err := rulesMap.Put(k, v); err != nil {
-			fmt.Printf("Failed to insert/update rule %d: %v\n", v.RuleID, err)
-		} else {
-			// We could be more quiet here, or only print if it's a new rule or changed
-			// For now, let's just log
-			fmt.Printf("Synced rule %d\n", v.RuleID)
-		}
+	// 3. Update the rule count in config map
+	if err := configMap.Put(uint32(0), i); err != nil {
+		fmt.Printf("Failed to update rule count: %v\n", err)
+	} else {
+		fmt.Printf("Updated active rule count to %d\n", i)
 	}
 }
 
 func actionToUint8(action string) uint8 {
-	switch action {
+	switch strings.ToUpper(action) {
 	case "PASS":
 		return 1
 	case "DROP":
