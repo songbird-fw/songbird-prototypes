@@ -16,7 +16,21 @@ import (
 	"github.com/cilium/ebpf/link"
 	"github.com/cilium/ebpf/perf"
 	"github.com/cilium/ebpf/rlimit"
+	"gopkg.in/yaml.v3"
 )
+
+type ConfigRule struct {
+	ID      uint32 `yaml:"id"`
+	SrcIP   string `yaml:"src_ip"`
+	DstIP   string `yaml:"dst_ip"`
+	DstPort uint16 `yaml:"dst_port"`
+	Proto   string `yaml:"proto"`
+	Action  string `yaml:"action"`
+}
+
+type Config struct {
+	Rules []ConfigRule `yaml:"rules"`
+}
 
 // RuleKey must match the C struct exactly, including padding and alignment.
 type RuleKey struct {
@@ -82,8 +96,34 @@ func main() {
 	eventsMap := coll.Maps["events"]
 	rulesMap := coll.Maps["rules"]
 
-	// Inject rules into the BPF 'rules' map
-	populateRules(rulesMap)
+	// Periodic configuration polling
+	const configPath = "rules.yaml"
+	go func() {
+		var lastModTime time.Time
+		for {
+			info, err := os.Stat(configPath)
+			if err != nil {
+				if !os.IsNotExist(err) {
+					fmt.Fprintf(os.Stderr, "Error stating config file: %v\n", err)
+				}
+				time.Sleep(5 * time.Second)
+				continue
+			}
+
+			if info.ModTime().After(lastModTime) {
+				fmt.Printf("\n--- Loading Config: %s ---\n", configPath)
+				config, err := loadConfig(configPath)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "❌ Failed to load config: %v\n", err)
+				} else {
+					syncRules(rulesMap, config)
+					lastModTime = info.ModTime()
+					fmt.Println("--- Config Synced ---")
+				}
+			}
+			time.Sleep(5 * time.Second)
+		}
+	}()
 
 	if ifaceName == "" {
 		// User interface for interface selection
@@ -163,54 +203,6 @@ func main() {
 	fmt.Println("\nShutting down...")
 }
 
-// populateRules: Centralized rule definitions.
-func populateRules(rulesMap *ebpf.Map) {
-	rules := []struct {
-		key   RuleKey
-		value RuleValue
-	}{
-		// SAFETY RULE: Allow SSH (TCP port 22) to prevent locking out the user
-		{
-			key: RuleKey{
-				DstPort: htons(22),
-				Proto:   6, // TCP
-			},
-			value: RuleValue{Action: 1, RuleID: 22},
-		},
-		// Allow HTTPS
-		{
-			key: RuleKey{
-				DstPort: htons(443),
-				Proto:   6, // TCP
-			},
-			value: RuleValue{Action: 1, RuleID: 443},
-		},
-		// Allow ICMP (Ping)
-		{
-			key: RuleKey{
-				Proto: 1, // ICMP
-			},
-			value: RuleValue{Action: 1, RuleID: 1},
-		},
-		// Explicit DROP for HTTP (Rule ID 80)
-		{
-			key: RuleKey{
-				DstPort: htons(80),
-				Proto:   6, // TCP
-			},
-			value: RuleValue{Action: 0, RuleID: 80},
-		},
-	}
-
-	for _, r := range rules {
-		if err := rulesMap.Put(r.key, r.value); err != nil {
-			fmt.Printf("Failed to insert rule %d: %v\n", r.value.RuleID, err)
-		} else {
-			fmt.Printf("Inserted rule %d\n", r.value.RuleID)
-		}
-	}
-}
-
 // ipToUint32: Helper to convert IP string to LittleEndian uint32 for BPF map keys.
 func ipToUint32(ipStr string) uint32 {
 	ip := net.ParseIP(ipStr).To4()
@@ -261,4 +253,93 @@ func ntohs(i uint16) uint16 {
 	b := make([]byte, 2)
 	binary.LittleEndian.PutUint16(b, i)
 	return binary.BigEndian.Uint16(b)
+}
+
+func loadConfig(path string) (*Config, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	var config Config
+	if err := yaml.Unmarshal(data, &config); err != nil {
+		return nil, err
+	}
+
+	return &config, nil
+}
+
+func protoToUint8(proto string) uint8 {
+	switch proto {
+	case "ICMP":
+		return 1
+	case "TCP":
+		return 6
+	case "UDP":
+		return 17
+	default:
+		return 0
+	}
+}
+
+func syncRules(rulesMap *ebpf.Map, config *Config) {
+	// 1. Convert config rules to a map for easy lookup
+	newRules := make(map[RuleKey]RuleValue)
+	for _, cr := range config.Rules {
+		key := RuleKey{
+			SrcIP:   ipToUint32(cr.SrcIP),
+			DstIP:   ipToUint32(cr.DstIP),
+			DstPort: htons(cr.DstPort),
+			Proto:   protoToUint8(cr.Proto),
+		}
+		val := RuleValue{
+			Action: actionToUint8(cr.Action),
+			RuleID: cr.ID,
+		}
+		newRules[key] = val
+	}
+
+	// 2. Iterate through existing BPF map and delete rules not in the new config
+	var key RuleKey
+	var val RuleValue
+	iter := rulesMap.Iterate()
+	toDelete := []RuleKey{}
+	for iter.Next(&key, &val) {
+		if _, ok := newRules[key]; !ok {
+			toDelete = append(toDelete, key)
+		}
+	}
+	if err := iter.Err(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error iterating rules map: %v\n", err)
+	}
+
+	for _, k := range toDelete {
+		if err := rulesMap.Delete(k); err != nil {
+			fmt.Printf("Failed to delete old rule: %v\n", err)
+		} else {
+			fmt.Println("Deleted old rule from BPF map")
+		}
+	}
+
+	// 3. Add or update rules from the config
+	for k, v := range newRules {
+		if err := rulesMap.Put(k, v); err != nil {
+			fmt.Printf("Failed to insert/update rule %d: %v\n", v.RuleID, err)
+		} else {
+			// We could be more quiet here, or only print if it's a new rule or changed
+			// For now, let's just log
+			fmt.Printf("Synced rule %d\n", v.RuleID)
+		}
+	}
+}
+
+func actionToUint8(action string) uint8 {
+	switch action {
+	case "PASS":
+		return 1
+	case "DROP":
+		return 0
+	default:
+		return 0
+	}
 }

@@ -1,0 +1,28 @@
+rules:
+  # SAFETY RULE: Allow SSH (TCP port 22)
+  - id: 22
+    dst_port: 22
+    proto: TCP
+    action: PASS
+
+  # Allow HTTPS
+  - id: 443
+    dst_port: 443
+    proto: TCP
+    action: PASS
+
+  # Allow ICMP (Ping)
+  - id: 1
+    proto: ICMP
+    action: PASS
+
+  # Explicit DROP for HTTP
+  - id: 80
+    dst_port: 80
+    proto: TCP
+    action: DROP
+
+  # Example of source IP restriction
+  # - id: 100
+  #   src_ip: 192.168.1.100
+  #   action: DROP
