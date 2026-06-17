@@ -1,0 +1,34 @@
+rules:
+  # SAFETY RULE: Allow SSH (TCP port 22) from any source
+  - id: 22
+    priority: 10
+    dst_port: 22
+    proto: TCP
+    action: PASS
+
+  # Allow HTTPS from a specific subnet
+  - id: 443
+    priority: 20
+    src_cidr: 192.168.1.0/24
+    dst_port: 443
+    proto: TCP
+    action: PASS
+
+  # Allow ICMP (Ping)
+  - id: 1
+    priority: 30
+    proto: ICMP
+    action: PASS
+
+  # Explicit DROP for HTTP
+  - id: 80
+    priority: 40
+    dst_port: 80
+    proto: TCP
+    action: DROP
+
+  # Example of blocking a specific external IP
+  - id: 666
+    priority: 5
+    src_cidr: 1.2.3.4/32
+    action: DROP
