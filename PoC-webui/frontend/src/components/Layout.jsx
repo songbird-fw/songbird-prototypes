@@ -7,12 +7,18 @@ import {
   Shield,
   Box,
   LogOut,
-  ChevronRight
+  ChevronRight,
+  Network,
+  ShieldAlert,
+  Activity
 } from 'lucide-react';
 
 const Sidebar = () => {
   const menuItems = [
     { name: 'Dashboard', path: '/', icon: <LayoutDashboard size={18} /> },
+    { name: 'Network Overview', path: '/network', icon: <Network size={18} /> },
+    { name: 'Security Intel', path: '/security', icon: <ShieldAlert size={18} /> },
+    { name: 'System Health', path: '/health', icon: <Activity size={18} /> },
     { name: 'IPv4 Policy', path: '/policies', icon: <ShieldCheck size={18} /> },
     { name: 'Policy Objects', path: '/objects', icon: <Box size={18} /> },
     { name: 'User Management', path: '/users', icon: <Users size={18} /> },

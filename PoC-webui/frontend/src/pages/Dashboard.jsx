@@ -1,16 +1,19 @@
 import React from 'react';
 import {
-  Activity,
   Cpu,
   Database,
-  Clock,
   Terminal,
-  Wifi,
-  Power,
-  AlertCircle,
-  BarChart3
+  Network,
+  Shield,
+  ShieldAlert,
+  Globe,
+  HardDrive,
+  Activity,
+  ArrowUpRight,
+  Clock,
+  Server
 } from 'lucide-react';
-import { Line } from 'react-chartjs-2';
+import { Line, Pie } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -21,7 +24,12 @@ import {
   Tooltip,
   Legend,
   Filler,
+  ArcElement
 } from 'chart.js';
+import Widget from '../components/widgets/Widget';
+import ThroughputWidget from '../components/widgets/ThroughputWidget';
+import DistributionWidget from '../components/widgets/DistributionWidget';
+import WorldMapWidget from '../components/widgets/WorldMapWidget';
 
 ChartJS.register(
   CategoryScale,
@@ -31,7 +39,31 @@ ChartJS.register(
   Title,
   Tooltip,
   Legend,
-  Filler
+  Filler,
+  ArcElement
+);
+
+const SectionHeader = ({ title }) => (
+  <div className="flex items-center gap-2 mb-3 mt-6 first:mt-0">
+    <div className="h-px bg-slate-200 flex-1"></div>
+    <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">{title}</span>
+    <div className="h-px bg-slate-200 flex-1"></div>
+  </div>
+);
+
+const StatCard = ({ label, value, icon: Icon, trend }) => (
+  <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm">
+    <div className="flex items-center justify-between mb-1">
+      <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider">{label}</span>
+      {Icon && <Icon size={12} className="text-slate-400" />}
+    </div>
+    <div className="text-lg font-black text-slate-700 leading-none">{value}</div>
+    {trend && (
+      <div className={`text-[8px] font-bold mt-1 ${trend > 0 ? 'text-green-500' : 'text-red-500'}`}>
+        {trend > 0 ? '↑' : '↓'} {Math.abs(trend)}% from last hour
+      </div>
+    )}
+  </div>
 );
 
 const Dashboard = () => {
@@ -40,23 +72,37 @@ const Dashboard = () => {
     datasets: [
       {
         label: 'WAN In',
-        data: Array.from({ length: 20 }, () => Math.floor(Math.random() * 500) + 100),
+        data: [120, 150, 180, 450, 410, 380, 420, 480, 510, 550, 520, 490, 450, 420, 410, 450, 480, 510, 550, 580],
         borderColor: '#3b82f6',
         backgroundColor: 'rgba(59, 130, 246, 0.1)',
-        fill: true,
-        tension: 0.4,
-        pointRadius: 0,
+        fill: true, tension: 0.4, pointRadius: 0,
       },
       {
         label: 'WAN Out',
-        data: Array.from({ length: 20 }, () => Math.floor(Math.random() * 200) + 50),
+        data: [50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 130, 120, 110, 100, 90, 80, 70, 60, 50, 60],
         borderColor: '#10b981',
         backgroundColor: 'rgba(16, 185, 129, 0.1)',
-        fill: true,
-        tension: 0.4,
-        pointRadius: 0,
+        fill: true, tension: 0.4, pointRadius: 0,
       },
     ],
+  };
+
+  const protocolData = {
+    labels: ['TCP', 'UDP', 'ICMP'],
+    datasets: [{
+      data: [618, 112, 45],
+      backgroundColor: ['#3b82f6', '#10b981', '#f59e0b'],
+      borderWidth: 0,
+    }],
+  };
+
+  const portData = {
+    labels: ['22', '443', '3389', '80'],
+    datasets: [{
+      data: [298, 412, 122, 95],
+      backgroundColor: ['#ef4444', '#3b82f6', '#f59e0b', '#10b981'],
+      borderWidth: 0,
+    }],
   };
 
   const chartOptions = {
@@ -65,135 +111,107 @@ const Dashboard = () => {
     plugins: { legend: { display: false } },
     scales: {
       x: { display: false },
-      y: {
-        beginAtZero: true,
-        grid: { color: '#f1f5f9' },
-        ticks: { font: { size: 10 }, color: '#94a3b8' }
-      }
+      y: { beginAtZero: true, grid: { color: '#f1f5f9' }, ticks: { font: { size: 10 }, color: '#94a3b8' } }
     }
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-slate-900">System Dashboard</h1>
+    <div className="space-y-4 max-w-[1600px] mx-auto pb-8">
+      <div className="flex items-center justify-between mb-2">
+        <h1 className="text-xl font-bold text-slate-900 tracking-tight">Security Dashboard</h1>
         <div className="flex gap-2">
-          <span className="flex items-center gap-1.5 px-3 py-1 bg-green-50 text-green-700 text-xs font-bold rounded border border-green-100">
-            <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></div>
-            SYSTEM READY
+          <span className="flex items-center gap-1 px-2 py-0.5 bg-green-50 text-green-700 text-[10px] font-bold rounded border border-green-100 uppercase">
+            System Online
           </span>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* System Information Widget */}
-        <div className="lg:col-span-4 bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
-          <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
-            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
-              <Cpu size={14} /> System Information
-            </h3>
-          </div>
-          <div className="p-4 space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <p className="text-[10px] text-slate-400 font-bold uppercase">Model</p>
-                <p className="text-sm font-medium text-slate-700">Songbird FW-100D</p>
-              </div>
-              <div className="space-y-1">
-                <p className="text-[10px] text-slate-400 font-bold uppercase">Uptime</p>
-                <p className="text-sm font-medium text-slate-700">12d 4h 33m</p>
-              </div>
-              <div className="space-y-1">
-                <p className="text-[10px] text-slate-400 font-bold uppercase">CPU Usage</p>
-                <div className="flex items-center gap-2">
-                  <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                    <div className="h-full bg-blue-500 rounded-full" style={{ width: '24%' }}></div>
-                  </div>
-                  <span className="text-xs font-bold text-slate-600">24%</span>
-                </div>
-              </div>
-              <div className="space-y-1">
-                <p className="text-[10px] text-slate-400 font-bold uppercase">Memory</p>
-                <div className="flex items-center gap-2">
-                  <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                    <div className="h-full bg-blue-500 rounded-full" style={{ width: '42%' }}></div>
-                  </div>
-                  <span className="text-xs font-bold text-slate-600">42%</span>
-                </div>
-              </div>
-            </div>
-            <div className="pt-4 border-t border-slate-50">
-              <div className="flex items-center justify-between text-xs text-slate-500">
-                <span>Firmware Version</span>
-                <span className="font-mono font-bold text-slate-700">v0.1.1-stable</span>
-              </div>
-            </div>
-          </div>
+      {/* Hardware Section */}
+      <SectionHeader title="Hardware" />
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+        <div className="lg:col-span-3">
+          <StatCard label="Model" value="Songbird FW-100D" icon={Server} />
         </div>
-
-        {/* Interface Throughput Widget */}
-        <div className="lg:col-span-8 bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
-          <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
-            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
-              <Wifi size={14} /> Interface Throughput (Kbps)
-            </h3>
-            <div className="flex gap-4">
-               <div className="flex items-center gap-1.5 text-[10px] text-slate-500 font-bold uppercase">
-                 <div className="w-2 h-2 rounded-full bg-blue-500"></div> WAN In
-               </div>
-               <div className="flex items-center gap-1.5 text-[10px] text-slate-500 font-bold uppercase">
-                 <div className="w-2 h-2 rounded-full bg-green-500"></div> WAN Out
-               </div>
-            </div>
-          </div>
-          <div className="p-4 h-[180px]">
-            <Line data={throughputData} options={chartOptions} />
-          </div>
+        <div className="lg:col-span-3">
+          <StatCard label="Uptime" value="12d 4h 33m" icon={Clock} />
         </div>
-
-        {/* Services Status Widget */}
-        <div className="lg:col-span-5 bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
-          <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/50">
-            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
-              <Database size={14} /> Services Status
-            </h3>
-          </div>
-          <div className="p-0">
-            {[
-              { name: 'Firewall Engine', status: 'Running', uptime: '12d 4h', color: 'text-green-500' },
-              { name: 'Intrusion Detection', status: 'Running', uptime: '5d 22h', color: 'text-green-500' },
-              { name: 'VPN Gateway', status: 'Standby', uptime: '-', color: 'text-slate-400' },
-              { name: 'DHCP Server', status: 'Running', uptime: '12d 4h', color: 'text-green-500' },
-              { name: 'DNS Forwarder', status: 'Error', uptime: '0m', color: 'text-red-500' },
-            ].map((svc) => (
-              <div key={svc.name} className="flex items-center justify-between px-4 py-3 border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors">
-                <span className="text-sm font-medium text-slate-700">{svc.name}</span>
-                <div className="flex items-center gap-4">
-                  <span className="text-[10px] text-slate-400 font-bold uppercase">{svc.uptime}</span>
-                  <span className={`text-[10px] font-black uppercase tracking-tighter ${svc.color}`}>{svc.status}</span>
+        <div className="lg:col-span-6">
+          <Widget title="Resource Utilization" icon={Activity}>
+             <div className="p-3 grid grid-cols-2 gap-6">
+                <div className="space-y-2">
+                   <div className="flex justify-between text-[8px] font-bold uppercase">
+                      <span className="text-slate-400">CPU Usage</span>
+                      <span className="text-slate-700">24%</span>
+                   </div>
+                   <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                      <div className="h-full bg-blue-500" style={{ width: '24%' }}></div>
+                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
+                <div className="space-y-2">
+                   <div className="flex justify-between text-[8px] font-bold uppercase">
+                      <span className="text-slate-400">Memory Usage</span>
+                      <span className="text-slate-700">42%</span>
+                   </div>
+                   <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                      <div className="h-full bg-green-500" style={{ width: '42%' }}></div>
+                   </div>
+                </div>
+             </div>
+          </Widget>
         </div>
+      </div>
 
-        {/* Live Logs Widget */}
-        <div className="lg:col-span-7 bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden flex flex-col">
-          <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
-            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
-              <Terminal size={14} /> Live Firewall Logs
-            </h3>
-            <button className="text-[10px] font-bold text-blue-600 uppercase hover:underline">View All</button>
-          </div>
-          <div className="flex-1 bg-slate-900 font-mono text-[11px] p-4 text-slate-300 space-y-1 overflow-y-auto max-h-[300px]">
-            <p><span className="text-slate-500">[14:45:01]</span> <span className="text-green-400">PASS</span> 192.168.1.10:54223 {"->"} 8.8.8.8:53 (UDP)</p>
-            <p><span className="text-slate-500">[14:45:02]</span> <span className="text-red-400">DROP</span> 45.12.33.19:1232 {"->"} 192.168.1.1:22 (TCP) [GEO-BLOCK]</p>
-            <p><span className="text-slate-500">[14:45:04]</span> <span className="text-green-400">PASS</span> 192.168.1.15:80 {"->"} 203.0.113.10:443 (TCP)</p>
-            <p><span className="text-slate-500">[14:45:07]</span> <span className="text-yellow-400">WARN</span> 10.0.4.55:3321 {"->"} 1.1.1.1:53 (UDP) [ICMP RATE LIMIT]</p>
-            <p><span className="text-slate-500">[14:45:10]</span> <span className="text-red-400">DROP</span> 185.122.2.1:54332 {"->"} 192.168.1.100:3389 (TCP) [MALICIOUS]</p>
-            <p><span className="text-slate-500">[14:45:12]</span> <span className="text-green-400">PASS</span> 192.168.1.10:44321 {"->"} 142.250.1.1:443 (TCP)</p>
-            <p><span className="text-slate-500">[14:45:15]</span> <span className="text-green-400">PASS</span> 192.168.1.20:51123 {"->"} 10.0.1.55:80 (TCP)</p>
-          </div>
+      {/* Firewall Section */}
+      <SectionHeader title="Firewall" />
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+        <div className="lg:col-span-2 space-y-4">
+           <StatCard label="Blocked Events" value="1,018" icon={ShieldAlert} trend={12} />
+           <StatCard label="Top Attacker" value="185.122.2.1" icon={Globe} />
+        </div>
+        <div className="lg:col-span-6">
+           <WorldMapWidget />
+        </div>
+        <div className="lg:col-span-4 grid grid-cols-2 gap-4">
+           <DistributionWidget title="Protocols" icon={Shield} data={protocolData} />
+           <DistributionWidget title="Ports" icon={ShieldAlert} data={portData} />
+        </div>
+      </div>
+
+      {/* Network Stats Section */}
+      <SectionHeader title="Network Stats" />
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+        <div className="lg:col-span-8">
+           <ThroughputWidget data={throughputData} options={chartOptions} />
+        </div>
+        <div className="lg:col-span-4">
+           <Widget title="Interface Summary" icon={Network}>
+              <table className="w-full text-left text-[10px]">
+                 <thead className="bg-slate-50 font-bold text-slate-400 uppercase border-b border-slate-100">
+                    <tr>
+                       <th className="px-3 py-1.5">Iface</th>
+                       <th className="px-3 py-1.5">IP</th>
+                       <th className="px-3 py-1.5">Status</th>
+                    </tr>
+                 </thead>
+                 <tbody className="divide-y divide-slate-50">
+                    <tr>
+                       <td className="px-3 py-1.5 font-bold">WAN</td>
+                       <td className="px-3 py-1.5 text-slate-500">203.0.113.42</td>
+                       <td className="px-3 py-1.5 text-green-500 font-bold">UP</td>
+                    </tr>
+                    <tr>
+                       <td className="px-3 py-1.5 font-bold">LAN</td>
+                       <td className="px-3 py-1.5 text-slate-500">192.168.1.1</td>
+                       <td className="px-3 py-1.5 text-green-500 font-bold">UP</td>
+                    </tr>
+                    <tr>
+                       <td className="px-3 py-1.5 font-bold">DMZ</td>
+                       <td className="px-3 py-1.5 text-slate-500">10.0.40.1</td>
+                       <td className="px-3 py-1.5 text-slate-400 font-bold">DOWN</td>
+                    </tr>
+                 </tbody>
+              </table>
+           </Widget>
         </div>
       </div>
     </div>
