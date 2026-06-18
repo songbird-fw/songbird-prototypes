@@ -13,8 +13,9 @@ const DistributionWidget = ({ title, icon, data }) => {
       legend: {
         position: 'right',
         labels: {
-          boxWidth: 8,
-          font: { size: 9 }
+          boxWidth: 6,
+          usePointStyle: true,
+          font: { size: 8 }
         }
       }
     }
@@ -22,7 +23,7 @@ const DistributionWidget = ({ title, icon, data }) => {
 
   return (
     <Widget title={title} icon={icon}>
-      <div className="p-4 h-[140px] flex items-center justify-center">
+      <div className="p-2 h-[100px] flex items-center justify-center">
         <Pie data={data} options={options} />
       </div>
     </Widget>

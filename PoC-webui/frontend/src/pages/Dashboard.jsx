@@ -7,7 +7,11 @@ import {
   Shield,
   ShieldAlert,
   Globe,
-  HardDrive
+  HardDrive,
+  Activity,
+  ArrowUpRight,
+  Clock,
+  Server
 } from 'lucide-react';
 import { Line, Pie } from 'react-chartjs-2';
 import {
@@ -23,7 +27,6 @@ import {
   ArcElement
 } from 'chart.js';
 import Widget from '../components/widgets/Widget';
-import GaugeWidget from '../components/widgets/GaugeWidget';
 import ThroughputWidget from '../components/widgets/ThroughputWidget';
 import DistributionWidget from '../components/widgets/DistributionWidget';
 import WorldMapWidget from '../components/widgets/WorldMapWidget';
@@ -38,6 +41,29 @@ ChartJS.register(
   Legend,
   Filler,
   ArcElement
+);
+
+const SectionHeader = ({ title }) => (
+  <div className="flex items-center gap-2 mb-3 mt-6 first:mt-0">
+    <div className="h-px bg-slate-200 flex-1"></div>
+    <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">{title}</span>
+    <div className="h-px bg-slate-200 flex-1"></div>
+  </div>
+);
+
+const StatCard = ({ label, value, icon: Icon, trend }) => (
+  <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm">
+    <div className="flex items-center justify-between mb-1">
+      <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider">{label}</span>
+      {Icon && <Icon size={12} className="text-slate-400" />}
+    </div>
+    <div className="text-lg font-black text-slate-700 leading-none">{value}</div>
+    {trend && (
+      <div className={`text-[8px] font-bold mt-1 ${trend > 0 ? 'text-green-500' : 'text-red-500'}`}>
+        {trend > 0 ? '↑' : '↓'} {Math.abs(trend)}% from last hour
+      </div>
+    )}
+  </div>
 );
 
 const Dashboard = () => {
@@ -70,6 +96,15 @@ const Dashboard = () => {
     }],
   };
 
+  const portData = {
+    labels: ['22', '443', '3389', '80'],
+    datasets: [{
+      data: [298, 412, 122, 95],
+      backgroundColor: ['#ef4444', '#3b82f6', '#f59e0b', '#10b981'],
+      borderWidth: 0,
+    }],
+  };
+
   const chartOptions = {
     responsive: true,
     maintainAspectRatio: false,
@@ -81,95 +116,102 @@ const Dashboard = () => {
   };
 
   return (
-    <div className="space-y-4 max-h-[calc(100vh-4rem)]">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold text-slate-900 tracking-tight">Security Overview</h1>
+    <div className="space-y-4 max-w-[1600px] mx-auto pb-8">
+      <div className="flex items-center justify-between mb-2">
+        <h1 className="text-xl font-bold text-slate-900 tracking-tight">Security Dashboard</h1>
         <div className="flex gap-2">
-          <span className="flex items-center gap-1 px-2 py-0.5 bg-green-50 text-green-700 text-[10px] font-bold rounded border border-green-100">
-            <div className="w-1 h-1 bg-green-500 rounded-full animate-pulse"></div>
-            FW-ENGINE: RUNNING
+          <span className="flex items-center gap-1 px-2 py-0.5 bg-green-50 text-green-700 text-[10px] font-bold rounded border border-green-100 uppercase">
+            System Online
           </span>
         </div>
       </div>
 
+      {/* Hardware Section */}
+      <SectionHeader title="Hardware" />
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-        {/* Row 1: System and Throughput */}
         <div className="lg:col-span-3">
-          <Widget title="System Info" icon={Cpu}>
-            <div className="p-3 space-y-3">
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <p className="text-[8px] text-slate-400 font-bold uppercase">Uptime</p>
-                  <p className="text-xs font-bold text-slate-700">12d 4h 33m</p>
-                </div>
-                <div>
-                  <p className="text-[8px] text-slate-400 font-bold uppercase">Firmware</p>
-                  <p className="text-xs font-bold text-slate-700">v0.1.1</p>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-[8px] font-bold uppercase">
-                  <span className="text-slate-400">Memory</span>
-                  <span className="text-slate-600">42%</span>
-                </div>
-                <div className="h-1 bg-slate-100 rounded-full overflow-hidden">
-                  <div className="h-full bg-blue-500" style={{ width: '42%' }}></div>
-                </div>
-              </div>
-            </div>
-          </Widget>
+          <StatCard label="Model" value="Songbird FW-100D" icon={Server} />
         </div>
-
+        <div className="lg:col-span-3">
+          <StatCard label="Uptime" value="12d 4h 33m" icon={Clock} />
+        </div>
         <div className="lg:col-span-6">
-          <ThroughputWidget data={throughputData} options={chartOptions} />
-        </div>
-
-        <div className="lg:col-span-3">
-          <GaugeWidget title="CPU Load" value={24} color="bg-blue-500" />
-        </div>
-
-        {/* Row 2: Security & Map */}
-        <div className="lg:col-span-3">
-          <DistributionWidget title="Blocked Protocols" icon={Shield} data={protocolData} />
-        </div>
-
-        <div className="lg:col-span-6">
-          <WorldMapWidget />
-        </div>
-
-        <div className="lg:col-span-3">
-           <Widget title="Service Status" icon={Database}>
-             <div className="p-0">
-               {[
-                 { name: 'Firewall Engine', status: 'Running', color: 'text-green-500' },
-                 { name: 'IDS/IPS', status: 'Running', color: 'text-green-500' },
-                 { name: 'DHCP Server', status: 'Running', color: 'text-green-500' },
-                 { name: 'DNS Forwarder', status: 'Error', color: 'text-red-500' },
-               ].map((svc) => (
-                 <div key={svc.name} className="flex items-center justify-between px-3 py-2 border-b border-slate-50 last:border-0">
-                   <span className="text-[11px] font-medium text-slate-600">{svc.name}</span>
-                   <span className={`text-[9px] font-black uppercase tracking-tighter ${svc.color}`}>{svc.status}</span>
-                 </div>
-               ))}
+          <Widget title="Resource Utilization" icon={Activity}>
+             <div className="p-3 grid grid-cols-2 gap-6">
+                <div className="space-y-2">
+                   <div className="flex justify-between text-[8px] font-bold uppercase">
+                      <span className="text-slate-400">CPU Usage</span>
+                      <span className="text-slate-700">24%</span>
+                   </div>
+                   <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                      <div className="h-full bg-blue-500" style={{ width: '24%' }}></div>
+                   </div>
+                </div>
+                <div className="space-y-2">
+                   <div className="flex justify-between text-[8px] font-bold uppercase">
+                      <span className="text-slate-400">Memory Usage</span>
+                      <span className="text-slate-700">42%</span>
+                   </div>
+                   <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                      <div className="h-full bg-green-500" style={{ width: '42%' }}></div>
+                   </div>
+                </div>
              </div>
-           </Widget>
-        </div>
-
-        {/* Row 3: Logs */}
-        <div className="lg:col-span-12">
-          <Widget
-            title="Live Security Events"
-            icon={Terminal}
-            headerAction={<button className="text-[9px] font-bold text-blue-600 uppercase hover:underline">View All</button>}
-          >
-            <div className="bg-slate-900 font-mono text-[10px] p-3 text-slate-300 space-y-1 h-[120px] overflow-y-auto">
-              <p><span className="text-slate-500">[14:45:12]</span> <span className="text-green-400">PASS</span> 192.168.1.10:44321 {"->"} 142.250.1.1:443 (TCP)</p>
-              <p><span className="text-slate-500">[14:45:10]</span> <span className="text-red-400">DROP</span> 185.122.2.1:54332 {"->"} 192.168.1.100:3389 (TCP) [MALICIOUS]</p>
-              <p><span className="text-slate-500">[14:45:07]</span> <span className="text-yellow-400">WARN</span> 10.0.4.55:3321 {"->"} 1.1.1.1:53 (UDP) [RATE-LIMIT]</p>
-              <p><span className="text-slate-500">[14:45:02]</span> <span className="text-red-400">DROP</span> 45.12.33.19:1232 {"->"} 192.168.1.1:22 (TCP) [GEO-BLOCK]</p>
-              <p><span className="text-slate-500">[14:44:58]</span> <span className="text-green-400">PASS</span> 192.168.1.15:80 {"->"} 203.0.113.10:443 (TCP)</p>
-            </div>
           </Widget>
+        </div>
+      </div>
+
+      {/* Firewall Section */}
+      <SectionHeader title="Firewall" />
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+        <div className="lg:col-span-2 space-y-4">
+           <StatCard label="Blocked Events" value="1,018" icon={ShieldAlert} trend={12} />
+           <StatCard label="Top Attacker" value="185.122.2.1" icon={Globe} />
+        </div>
+        <div className="lg:col-span-6">
+           <WorldMapWidget />
+        </div>
+        <div className="lg:col-span-4 grid grid-cols-2 gap-4">
+           <DistributionWidget title="Protocols" icon={Shield} data={protocolData} />
+           <DistributionWidget title="Ports" icon={ShieldAlert} data={portData} />
+        </div>
+      </div>
+
+      {/* Network Stats Section */}
+      <SectionHeader title="Network Stats" />
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+        <div className="lg:col-span-8">
+           <ThroughputWidget data={throughputData} options={chartOptions} />
+        </div>
+        <div className="lg:col-span-4">
+           <Widget title="Interface Summary" icon={Network}>
+              <table className="w-full text-left text-[10px]">
+                 <thead className="bg-slate-50 font-bold text-slate-400 uppercase border-b border-slate-100">
+                    <tr>
+                       <th className="px-3 py-1.5">Iface</th>
+                       <th className="px-3 py-1.5">IP</th>
+                       <th className="px-3 py-1.5">Status</th>
+                    </tr>
+                 </thead>
+                 <tbody className="divide-y divide-slate-50">
+                    <tr>
+                       <td className="px-3 py-1.5 font-bold">WAN</td>
+                       <td className="px-3 py-1.5 text-slate-500">203.0.113.42</td>
+                       <td className="px-3 py-1.5 text-green-500 font-bold">UP</td>
+                    </tr>
+                    <tr>
+                       <td className="px-3 py-1.5 font-bold">LAN</td>
+                       <td className="px-3 py-1.5 text-slate-500">192.168.1.1</td>
+                       <td className="px-3 py-1.5 text-green-500 font-bold">UP</td>
+                    </tr>
+                    <tr>
+                       <td className="px-3 py-1.5 font-bold">DMZ</td>
+                       <td className="px-3 py-1.5 text-slate-500">10.0.40.1</td>
+                       <td className="px-3 py-1.5 text-slate-400 font-bold">DOWN</td>
+                    </tr>
+                 </tbody>
+              </table>
+           </Widget>
         </div>
       </div>
     </div>
