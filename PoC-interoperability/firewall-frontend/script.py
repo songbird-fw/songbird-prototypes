@@ -1,0 +1,847 @@
+html = r"""<!DOCTYPE html>
+<html lang="it" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Firewall Control Panel</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300..700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/* ===================== DESIGN TOKENS ===================== */
+:root, [data-theme="dark"] {
+  --color-bg:              #0f1117;
+  --color-surface:         #161b22;
+  --color-surface-2:       #1c2330;
+  --color-surface-offset:  #21262d;
+  --color-border:          #30363d;
+  --color-divider:         #21262d;
+  --color-text:            #e6edf3;
+  --color-text-muted:      #8b949e;
+  --color-text-faint:      #484f58;
+  --color-primary:         #388bfd;
+  --color-primary-hover:   #58a6ff;
+  --color-success:         #3fb950;
+  --color-success-highlight: #1a2d1e;
+  --color-error:           #f85149;
+  --color-error-highlight: #2d1a1a;
+  --color-warning:         #e3b341;
+  --color-warning-highlight: #2d2410;
+  --color-orange:          #f0883e;
+  --color-purple:          #a371f7;
+  --font-body:   'Inter', system-ui, sans-serif;
+  --font-mono:   'JetBrains Mono', 'Fira Code', monospace;
+  --text-xs:    clamp(0.75rem, 0.7rem + 0.25vw, 0.875rem);
+  --text-sm:    clamp(0.875rem, 0.8rem + 0.35vw, 1rem);
+  --text-base:  clamp(1rem, 0.95rem + 0.25vw, 1.125rem);
+  --text-lg:    clamp(1.125rem, 1rem + 0.75vw, 1.5rem);
+  --text-xl:    clamp(1.5rem, 1.2rem + 1.25vw, 2.25rem);
+  --space-1: .25rem; --space-2: .5rem; --space-3: .75rem; --space-4: 1rem;
+  --space-5: 1.25rem; --space-6: 1.5rem; --space-8: 2rem; --space-10: 2.5rem;
+  --space-12: 3rem; --space-16: 4rem;
+  --radius-sm: .375rem; --radius-md: .5rem; --radius-lg: .75rem; --radius-xl: 1rem;
+  --shadow-sm: 0 1px 3px #0005; --shadow-md: 0 4px 16px #0008;
+  --transition: 180ms cubic-bezier(0.16,1,0.3,1);
+}
+
+[data-theme="light"] {
+  --color-bg:             #f5f7fa;
+  --color-surface:        #ffffff;
+  --color-surface-2:      #f0f2f5;
+  --color-surface-offset: #e8eaed;
+  --color-border:         #d0d7de;
+  --color-divider:        #e8eaed;
+  --color-text:           #1f2328;
+  --color-text-muted:     #636c76;
+  --color-text-faint:     #adb5bd;
+  --color-primary:        #0969da;
+  --color-primary-hover:  #0550ae;
+  --color-success:        #1a7f37;
+  --color-success-highlight: #dafbe1;
+  --color-error:          #cf222e;
+  --color-error-highlight: #ffebe9;
+  --color-warning:        #9a6700;
+  --color-warning-highlight: #fff8c5;
+}
+
+/* ===================== BASE ===================== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  color: var(--color-text);
+  background: var(--color-bg);
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  -webkit-font-smoothing: antialiased;
+}
+button { cursor: pointer; font: inherit; border: none; background: none; color: inherit; }
+input, select { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; border-radius: var(--radius-sm); }
+.sr-only { position: absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); }
+
+/* ===================== LAYOUT ===================== */
+.layout { display: flex; min-height: 100dvh; }
+.sidebar {
+  width: 220px; flex-shrink: 0;
+  background: var(--color-surface);
+  border-right: 1px solid var(--color-border);
+  display: flex; flex-direction: column;
+  position: sticky; top: 0; height: 100dvh; overflow-y: auto;
+}
+.main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.topbar {
+  background: var(--color-surface); border-bottom: 1px solid var(--color-border);
+  padding: var(--space-3) var(--space-6);
+  display: flex; align-items: center; justify-content: space-between;
+  position: sticky; top: 0; z-index: 10;
+}
+.content { padding: var(--space-6); flex: 1; overflow-y: auto; max-width: 1100px; }
+
+/* ===================== SIDEBAR ===================== */
+.sidebar-logo {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-5) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+}
+.sidebar-logo svg { color: var(--color-primary); flex-shrink: 0; }
+.sidebar-logo-text { font-weight: 700; font-size: var(--text-sm); letter-spacing: -0.01em; }
+.sidebar-logo-sub { font-size: var(--text-xs); color: var(--color-text-muted); }
+
+.nav { padding: var(--space-4) var(--space-2); flex: 1; }
+.nav-item {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+  border: none; background: none; width: 100%; text-align: left;
+}
+.nav-item:hover { background: var(--color-surface-offset); color: var(--color-text); }
+.nav-item.active { background: color-mix(in oklch, var(--color-primary) 15%, var(--color-surface)); color: var(--color-primary); font-weight: 600; }
+.nav-item svg { flex-shrink: 0; }
+
+.sidebar-footer { padding: var(--space-4); border-top: 1px solid var(--color-border); }
+.user-pill {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-offset);
+}
+.user-avatar {
+  width: 28px; height: 28px; border-radius: 50%;
+  background: var(--color-primary); display: flex; align-items: center; justify-content: center;
+  font-size: var(--text-xs); font-weight: 700; color: #fff; flex-shrink: 0;
+}
+.user-name { font-size: var(--text-xs); font-weight: 600; }
+.user-role { font-size: var(--text-xs); color: var(--color-text-muted); }
+
+/* ===================== TOPBAR ===================== */
+.topbar-left { display: flex; align-items: center; gap: var(--space-3); }
+.topbar-title { font-weight: 600; font-size: var(--text-sm); }
+.topbar-right { display: flex; align-items: center; gap: var(--space-3); }
+.status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.status-dot.online { background: var(--color-success); box-shadow: 0 0 6px var(--color-success)44; }
+.status-dot.offline { background: var(--color-error); }
+.status-label { font-size: var(--text-xs); color: var(--color-text-muted); }
+.icon-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; border-radius: var(--radius-md);
+  color: var(--color-text-muted); transition: background var(--transition), color var(--transition);
+}
+.icon-btn:hover { background: var(--color-surface-offset); color: var(--color-text); }
+
+/* ===================== PAGES ===================== */
+.page { display: none; flex-direction: column; gap: var(--space-6); }
+.page.active { display: flex; }
+
+/* ===================== KPI CARDS ===================== */
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: var(--space-4); }
+.kpi-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  display: flex; flex-direction: column; gap: var(--space-2);
+}
+.kpi-label { font-size: var(--text-xs); color: var(--color-text-muted); text-transform: uppercase; letter-spacing: .06em; font-weight: 600; }
+.kpi-value { font-size: var(--text-xl); font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.03em; line-height: 1; }
+.kpi-sub { font-size: var(--text-xs); color: var(--color-text-muted); }
+.kpi-value.success { color: var(--color-success); }
+.kpi-value.error { color: var(--color-error); }
+.kpi-value.primary { color: var(--color-primary); }
+
+/* ===================== PANELS ===================== */
+.panel {
+  background: var(--color-surface); border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg); overflow: hidden;
+}
+.panel-header {
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--color-border);
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-4);
+}
+.panel-title { font-weight: 600; font-size: var(--text-sm); }
+.panel-body { padding: var(--space-5); }
+
+/* ===================== FORMS ===================== */
+.form-row { display: flex; gap: var(--space-3); align-items: flex-end; flex-wrap: wrap; }
+.form-group { display: flex; flex-direction: column; gap: var(--space-2); flex: 1; min-width: 180px; }
+label { font-size: var(--text-xs); font-weight: 600; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: .05em; }
+.input {
+  background: var(--color-surface-offset); border: 1px solid var(--color-border);
+  border-radius: var(--radius-md); padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm); color: var(--color-text);
+  transition: border-color var(--transition), box-shadow var(--transition);
+  width: 100%;
+}
+.input:focus { outline: none; border-color: var(--color-primary); box-shadow: 0 0 0 3px color-mix(in oklch, var(--color-primary) 20%, transparent); }
+.input::placeholder { color: var(--color-text-faint); }
+
+/* ===================== BUTTONS ===================== */
+.btn { display: inline-flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-4); border-radius: var(--radius-md); font-size: var(--text-sm); font-weight: 600; transition: background var(--transition), color var(--transition), box-shadow var(--transition); white-space: nowrap; }
+.btn-primary { background: var(--color-primary); color: #fff; }
+.btn-primary:hover { background: var(--color-primary-hover); }
+.btn-danger { background: var(--color-error); color: #fff; }
+.btn-danger:hover { background: color-mix(in oklch, var(--color-error) 80%, #000); }
+.btn-ghost { background: var(--color-surface-offset); color: var(--color-text); }
+.btn-ghost:hover { background: var(--color-border); }
+.btn-sm { padding: var(--space-1) var(--space-3); font-size: var(--text-xs); }
+
+/* ===================== TABLE ===================== */
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; }
+thead tr { border-bottom: 1px solid var(--color-border); }
+th { padding: var(--space-3) var(--space-4); text-align: left; font-size: var(--text-xs); font-weight: 600; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: .05em; white-space: nowrap; }
+td { padding: var(--space-3) var(--space-4); font-size: var(--text-sm); border-bottom: 1px solid var(--color-divider); font-variant-numeric: tabular-nums; }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: var(--color-surface-offset); }
+.mono { font-family: var(--font-mono); font-size: var(--text-xs); }
+
+/* ===================== BADGE ===================== */
+.badge { display: inline-flex; align-items: center; gap: var(--space-1); padding: 2px var(--space-2); border-radius: var(--radius-full, 9999px); font-size: var(--text-xs); font-weight: 600; }
+.badge-error { background: var(--color-error-highlight); color: var(--color-error); }
+.badge-success { background: var(--color-success-highlight); color: var(--color-success); }
+.badge-warning { background: var(--color-warning-highlight); color: var(--color-warning); }
+.badge-primary { background: color-mix(in oklch, var(--color-primary) 15%, var(--color-surface)); color: var(--color-primary); }
+
+/* ===================== EVENT STREAM ===================== */
+.event-log {
+  background: var(--color-bg); border: 1px solid var(--color-border);
+  border-radius: var(--radius-md); padding: var(--space-4);
+  height: 340px; overflow-y: auto; display: flex; flex-direction: column; gap: var(--space-2);
+  font-family: var(--font-mono); font-size: var(--text-xs);
+}
+.event-entry {
+  display: grid; grid-template-columns: 140px 100px 1fr;
+  gap: var(--space-3); align-items: start;
+  padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm);
+  background: var(--color-surface); border: 1px solid var(--color-border);
+  animation: slideIn .15s ease-out;
+}
+@keyframes slideIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.event-ts { color: var(--color-text-faint); white-space: nowrap; }
+.event-data { color: var(--color-text); word-break: break-all; }
+.event-log .empty { color: var(--color-text-faint); text-align: center; padding: var(--space-8); }
+
+/* ===================== AUTH SCREEN ===================== */
+#auth-screen {
+  position: fixed; inset: 0; z-index: 100;
+  background: var(--color-bg);
+  display: flex; align-items: center; justify-content: center;
+}
+.auth-card {
+  background: var(--color-surface); border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl); padding: var(--space-10);
+  width: 100%; max-width: 380px; box-shadow: var(--shadow-md);
+  display: flex; flex-direction: column; gap: var(--space-6);
+}
+.auth-logo { display: flex; align-items: center; gap: var(--space-3); }
+.auth-logo svg { color: var(--color-primary); }
+.auth-logo-text { font-weight: 700; font-size: var(--text-lg); letter-spacing: -0.02em; }
+.auth-title { font-size: var(--text-base); font-weight: 600; }
+.auth-sub { font-size: var(--text-xs); color: var(--color-text-muted); margin-top: -var(--space-4); }
+.auth-form { display: flex; flex-direction: column; gap: var(--space-4); }
+.auth-error { font-size: var(--text-xs); color: var(--color-error); padding: var(--space-2) var(--space-3); background: var(--color-error-highlight); border-radius: var(--radius-sm); display: none; }
+.auth-demo { font-size: var(--text-xs); color: var(--color-text-faint); padding: var(--space-3); background: var(--color-surface-offset); border-radius: var(--radius-md); }
+
+/* ===================== TOAST ===================== */
+#toast-area { position: fixed; bottom: var(--space-6); right: var(--space-6); z-index: 200; display: flex; flex-direction: column; gap: var(--space-2); }
+.toast {
+  padding: var(--space-3) var(--space-5); border-radius: var(--radius-lg);
+  font-size: var(--text-sm); font-weight: 500; box-shadow: var(--shadow-md);
+  animation: toastIn .2s ease-out;
+  display: flex; align-items: center; gap: var(--space-3);
+}
+@keyframes toastIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.toast-success { background: var(--color-success); color: #fff; }
+.toast-error { background: var(--color-error); color: #fff; }
+.toast-info { background: var(--color-surface-2); color: var(--color-text); border: 1px solid var(--color-border); }
+
+/* ===================== SCROLLBAR ===================== */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 3px; }
+
+/* ===================== EMPTY ===================== */
+.empty-state { display: flex; flex-direction: column; align-items: center; gap: var(--space-3); padding: var(--space-10); color: var(--color-text-muted); }
+.empty-state svg { color: var(--color-text-faint); }
+.empty-state p { font-size: var(--text-sm); text-align: center; max-width: 28ch; }
+
+/* ===================== RESPONSIVE ===================== */
+@media (max-width: 768px) {
+  .sidebar { display: none; }
+  .content { padding: var(--space-4); }
+  .kpi-grid { grid-template-columns: 1fr 1fr; }
+}
+</style>
+</head>
+<body>
+
+<!-- AUTH SCREEN -->
+<div id="auth-screen">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <svg width="32" height="32" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+        <rect width="32" height="32" rx="8" fill="currentColor" fill-opacity=".12"/>
+        <path d="M16 6 L24 10 L24 18 C24 22.4 20.4 26.2 16 27 C11.6 26.2 8 22.4 8 18 L8 10 Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+        <path d="M13 16 L15 18 L19 14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span class="auth-logo-text">FW Control</span>
+    </div>
+    <div>
+      <div class="auth-title">Accesso Amministratore</div>
+      <div class="auth-sub" style="margin-top:.5rem;font-size:var(--text-xs);color:var(--color-text-muted);">Inserisci le credenziali per accedere al pannello firewall</div>
+    </div>
+    <form class="auth-form" id="login-form">
+      <div class="auth-error" id="auth-error">Credenziali non valide o server non raggiungibile.</div>
+      <div class="form-group">
+        <label for="inp-user">Username</label>
+        <input id="inp-user" class="input" type="text" placeholder="admin" autocomplete="username" value="admin">
+      </div>
+      <div class="form-group">
+        <label for="inp-pass">Password</label>
+        <input id="inp-pass" class="input" type="password" placeholder="••••••••" autocomplete="current-password" value="password">
+      </div>
+      <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;" id="login-btn">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+        Accedi
+      </button>
+    </form>
+    <div class="auth-demo">
+      <strong>Demo mode</strong>: se il backend non è raggiungibile, usa le credenziali simulate <code>admin / password</code> per entrare in modalità mock.
+    </div>
+  </div>
+</div>
+
+<!-- MAIN APP -->
+<div class="layout" id="app" style="display:none">
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <svg width="28" height="28" viewBox="0 0 32 32" fill="none" aria-label="FW Control logo">
+        <rect width="32" height="32" rx="8" fill="currentColor" fill-opacity=".12"/>
+        <path d="M16 6 L24 10 L24 18 C24 22.4 20.4 26.2 16 27 C11.6 26.2 8 22.4 8 18 L8 10 Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+        <path d="M13 16 L15 18 L19 14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <div>
+        <div class="sidebar-logo-text">FW Control</div>
+        <div class="sidebar-logo-sub">v2.0 · XDP+nftables</div>
+      </div>
+    </div>
+    <nav class="nav">
+      <button class="nav-item active" data-page="dashboard">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        Dashboard
+      </button>
+      <button class="nav-item" data-page="blocklist">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+        Blocklist
+      </button>
+      <button class="nav-item" data-page="events">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        Event Stream
+      </button>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="user-pill">
+        <div class="user-avatar" id="sidebar-avatar">A</div>
+        <div style="flex:1;min-width:0">
+          <div class="user-name" id="sidebar-user">admin</div>
+          <div class="user-role">Administrator</div>
+        </div>
+        <button class="icon-btn" id="logout-btn" title="Logout" aria-label="Logout">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        </button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <div class="main">
+    <!-- TOPBAR -->
+    <header class="topbar">
+      <div class="topbar-left">
+        <div class="status-dot offline" id="xdp-dot"></div>
+        <span class="status-label" id="xdp-label">XDP disconnesso</span>
+      </div>
+      <div class="topbar-right">
+        <span class="status-label" id="sse-status">SSE: —</span>
+        <button class="icon-btn" data-theme-toggle aria-label="Cambia tema">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- CONTENT -->
+    <main class="content">
+
+      <!-- DASHBOARD PAGE -->
+      <section class="page active" id="page-dashboard">
+        <div class="kpi-grid">
+          <div class="kpi-card">
+            <div class="kpi-label">Pacchetti passati</div>
+            <div class="kpi-value primary" id="kpi-passed">—</div>
+            <div class="kpi-sub">Totale sessione</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Pacchetti droppati</div>
+            <div class="kpi-value error" id="kpi-dropped">—</div>
+            <div class="kpi-sub">Bloccati da XDP</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">IP in blocklist</div>
+            <div class="kpi-value success" id="kpi-blocked">—</div>
+            <div class="kpi-sub">XDP + nftables</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Drop rate</div>
+            <div class="kpi-value warning" id="kpi-rate">—</div>
+            <div class="kpi-sub">% sul totale</div>
+          </div>
+        </div>
+
+        <!-- QUICK BLOCK -->
+        <div class="panel">
+          <div class="panel-header"><div class="panel-title">Blocca IP rapido</div></div>
+          <div class="panel-body">
+            <div class="form-row">
+              <div class="form-group">
+                <label for="quick-ip">Indirizzo IPv4</label>
+                <input id="quick-ip" class="input" type="text" placeholder="192.168.1.100">
+              </div>
+              <button class="btn btn-danger" id="quick-block-btn">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+                Blocca
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- RECENT EVENTS -->
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title">Ultimi eventi</div>
+            <span class="badge badge-primary" id="event-count-badge">0</span>
+          </div>
+          <div class="event-log" id="event-log-dash">
+            <div class="empty">In attesa di eventi SSE...</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- BLOCKLIST PAGE -->
+      <section class="page" id="page-blocklist">
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title">Gestione blocklist</div>
+            <button class="btn btn-ghost btn-sm" id="refresh-list-btn">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+              Aggiorna
+            </button>
+          </div>
+          <div class="panel-body" style="padding-bottom:0">
+            <div class="form-row" style="padding-bottom:var(--space-5)">
+              <div class="form-group">
+                <label for="add-ip">Indirizzo IPv4 da bloccare</label>
+                <input id="add-ip" class="input" type="text" placeholder="10.0.0.1">
+              </div>
+              <button class="btn btn-danger" id="add-block-btn">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                Aggiungi
+              </button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr>
+                <th>#</th>
+                <th>Indirizzo IP</th>
+                <th>Motore</th>
+                <th>Aggiunto</th>
+                <th>Azione</th>
+              </tr></thead>
+              <tbody id="blocklist-tbody"></tbody>
+            </table>
+            <div id="blocklist-empty" class="empty-state" style="display:none">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+              <p>La blocklist è vuota. Aggiungi un IP per iniziare.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- EVENTS PAGE -->
+      <section class="page" id="page-events">
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title">Event Stream SSE live</div>
+            <div style="display:flex;gap:var(--space-2)">
+              <button class="btn btn-ghost btn-sm" id="clear-events-btn">Svuota</button>
+              <button class="btn btn-ghost btn-sm" id="reconnect-sse-btn">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                Riconnetti SSE
+              </button>
+            </div>
+          </div>
+          <div class="panel-body">
+            <p style="font-size:var(--text-xs);color:var(--color-text-muted);margin-bottom:var(--space-4)">
+              Connesso a <code style="font-family:var(--font-mono)">GET /api/v1/stream/events</code> — gli eventi appaiono in tempo reale.
+            </p>
+            <div class="event-log" id="event-log-full" style="height:480px">
+              <div class="empty">In attesa di connessione SSE...</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- API tester -->
+        <div class="panel">
+          <div class="panel-header"><div class="panel-title">API Tester rapido</div></div>
+          <div class="panel-body" style="display:flex;flex-direction:column;gap:var(--space-4)">
+            <div class="form-row">
+              <div class="form-group" style="max-width:320px">
+                <label>Base URL Backend</label>
+                <input id="api-base" class="input" type="text" value="http://localhost:8080">
+              </div>
+            </div>
+            <div style="display:flex;gap:var(--space-3);flex-wrap:wrap">
+              <button class="btn btn-ghost btn-sm" id="test-health">GET /healthz</button>
+              <button class="btn btn-ghost btn-sm" id="test-stats">GET /api/v1/stats</button>
+              <button class="btn btn-ghost btn-sm" id="test-rules">GET /api/v1/rules</button>
+            </div>
+            <pre id="api-response" style="background:var(--color-bg);border:1px solid var(--color-border);border-radius:var(--radius-md);padding:var(--space-4);font-family:var(--font-mono);font-size:var(--text-xs);color:var(--color-text-muted);min-height:80px;overflow:auto;white-space:pre-wrap;word-break:break-all">// La risposta API apparirà qui...</pre>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<div id="toast-area"></div>
+
+<script>
+/* ==================== STATE ==================== */
+const state = {
+  token: null, refreshToken: null, username: 'admin',
+  apiBase: 'http://localhost:8080',
+  sse: null, sseConnected: false,
+  blocklist: [], eventCount: 0,
+  mockMode: false,
+};
+
+/* ==================== THEME ==================== */
+(function(){
+  const t = document.querySelector('[data-theme-toggle]'), r = document.documentElement;
+  let d = r.getAttribute('data-theme') || 'dark';
+  t && t.addEventListener('click', () => {
+    d = d === 'dark' ? 'light' : 'dark';
+    r.setAttribute('data-theme', d);
+  });
+})();
+
+/* ==================== TOAST ==================== */
+function toast(msg, type='info') {
+  const el = document.createElement('div');
+  el.className = `toast toast-${type}`;
+  el.innerHTML = (type==='success'?'✓ ':type==='error'?'✕ ':'ℹ ') + msg;
+  document.getElementById('toast-area').appendChild(el);
+  setTimeout(() => el.remove(), 3500);
+}
+
+/* ==================== NAV ==================== */
+document.querySelectorAll('.nav-item[data-page]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('page-' + btn.dataset.page).classList.add('active');
+  });
+});
+
+/* ==================== API HELPER ==================== */
+async function api(path, method='GET', body=null) {
+  const url = state.apiBase + path;
+  const headers = { 'Content-Type': 'application/json' };
+  if (state.token) headers['Authorization'] = 'Bearer ' + state.token;
+  try {
+    const resp = await fetch(url, { method, headers, body: body ? JSON.stringify(body) : undefined });
+    const data = await resp.json().catch(() => ({}));
+    return { ok: resp.ok, status: resp.status, data };
+  } catch(e) {
+    return { ok: false, status: 0, data: { error: e.message } };
+  }
+}
+
+/* ==================== MOCK DATA ==================== */
+function mockLogin() {
+  state.token = 'mock.token.admin';
+  state.refreshToken = 'mock-refresh-token';
+  state.mockMode = true;
+}
+function mockBlocklist() {
+  return state.blocklist;
+}
+function mockStats() {
+  return { passed: Math.floor(Math.random()*100000+50000), dropped: state.blocklist.length * Math.floor(Math.random()*800+200) };
+}
+
+/* ==================== AUTH ==================== */
+document.getElementById('login-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const username = document.getElementById('inp-user').value.trim();
+  const password = document.getElementById('inp-pass').value;
+  const btn = document.getElementById('login-btn');
+  btn.textContent = 'Accesso in corso...'; btn.disabled = true;
+  document.getElementById('auth-error').style.display = 'none';
+  const res = await api('/api/v1/auth/login', 'POST', { username, password });
+  if (res.ok && res.data.accessToken) {
+    state.token = res.data.accessToken;
+    state.refreshToken = res.data.refreshToken;
+    state.username = username;
+    state.mockMode = false;
+    enterApp();
+  } else if (username === 'admin' && password === 'password') {
+    mockLogin(); state.username = username; enterApp();
+    toast('Modalità demo attiva (backend non raggiungibile)', 'info');
+  } else {
+    document.getElementById('auth-error').style.display = 'block';
+  }
+  btn.textContent = 'Accedi'; btn.disabled = false;
+});
+
+function enterApp() {
+  document.getElementById('auth-screen').style.display = 'none';
+  document.getElementById('app').style.display = 'flex';
+  document.getElementById('sidebar-user').textContent = state.username;
+  document.getElementById('sidebar-avatar').textContent = state.username[0].toUpperCase();
+  document.getElementById('api-base').value = state.apiBase;
+  loadStats(); loadBlocklist(); connectSSE();
+  setInterval(loadStats, 5000);
+}
+
+document.getElementById('logout-btn').addEventListener('click', async () => {
+  if (state.refreshToken && !state.mockMode) {
+    await api('/api/v1/auth/logout', 'POST', { refreshToken: state.refreshToken });
+  }
+  if (state.sse) { state.sse.close(); state.sse = null; }
+  state.token = null; state.refreshToken = null; state.mockMode = false;
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('auth-screen').style.display = 'flex';
+  toast('Logout effettuato', 'success');
+});
+
+/* ==================== STATS ==================== */
+async function loadStats() {
+  let s;
+  if (state.mockMode) {
+    s = mockStats();
+    setXDPStatus(false);
+  } else {
+    const res = await api('/api/v1/stats');
+    if (!res.ok) return;
+    s = res.data;
+    setXDPStatus(true);
+  }
+  const total = (s.passed||0) + (s.dropped||0);
+  const rate = total > 0 ? ((s.dropped||0)/total*100).toFixed(1)+'%' : '0%';
+  animateNum('kpi-passed', s.passed||0);
+  animateNum('kpi-dropped', s.dropped||0);
+  document.getElementById('kpi-blocked').textContent = state.blocklist.length;
+  document.getElementById('kpi-rate').textContent = rate;
+}
+function animateNum(id, target) {
+  const el = document.getElementById(id);
+  const cur = parseInt(el.textContent.replace(/[^0-9]/g,''))||0;
+  const diff = target - cur;
+  if (Math.abs(diff) < 2) { el.textContent = target.toLocaleString('it-IT'); return; }
+  let v = cur, steps = 12;
+  const step = diff / steps;
+  const iv = setInterval(() => {
+    v += step; steps--;
+    el.textContent = Math.round(v).toLocaleString('it-IT');
+    if (steps <= 0) { el.textContent = target.toLocaleString('it-IT'); clearInterval(iv); }
+  }, 20);
+}
+function setXDPStatus(online) {
+  const dot = document.getElementById('xdp-dot');
+  const lbl = document.getElementById('xdp-label');
+  dot.className = 'status-dot ' + (online ? 'online' : 'offline');
+  lbl.textContent = online ? 'XDP connesso' : 'Modalità demo';
+}
+
+/* ==================== BLOCKLIST ==================== */
+async function loadBlocklist() {
+  let ips;
+  if (state.mockMode) {
+    ips = mockBlocklist();
+  } else {
+    const res = await api('/api/v1/rules');
+    if (!res.ok) return;
+    ips = res.data.blocked_ips || [];
+  }
+  state.blocklist = ips;
+  renderBlocklist();
+  document.getElementById('kpi-blocked').textContent = state.blocklist.length;
+}
+
+function renderBlocklist() {
+  const tbody = document.getElementById('blocklist-tbody');
+  const empty = document.getElementById('blocklist-empty');
+  if (state.blocklist.length === 0) {
+    tbody.innerHTML = ''; empty.style.display = 'flex'; return;
+  }
+  empty.style.display = 'none';
+  tbody.innerHTML = state.blocklist.map((ip, i) => `
+    <tr>
+      <td style="color:var(--color-text-faint)">${i+1}</td>
+      <td><span class="mono">${escHtml(ip)}</span></td>
+      <td><span class="badge badge-error">XDP + nft</span></td>
+      <td style="color:var(--color-text-muted);font-size:var(--text-xs)">${new Date().toLocaleString('it-IT')}</td>
+      <td><button class="btn btn-ghost btn-sm" onclick="unblockIP('${escHtml(ip)}')">Sblocca</button></td>
+    </tr>
+  `).join('');
+}
+
+async function blockIP(ip) {
+  ip = ip.trim();
+  if (!ip) return;
+  if (!/^(\d{1,3}\.){3}\d{1,3}$/.test(ip)) { toast('Indirizzo IPv4 non valido', 'error'); return; }
+  if (state.mockMode) {
+    if (!state.blocklist.includes(ip)) { state.blocklist.push(ip); }
+    renderBlocklist(); loadStats();
+    pushEvent({ event: 'block_ip', ip }); toast(`IP ${ip} bloccato (demo)`, 'success'); return;
+  }
+  const res = await api('/api/v1/rules/block-ip', 'POST', { ip });
+  if (res.ok) { toast(`IP ${ip} bloccato`, 'success'); loadBlocklist(); loadStats(); }
+  else toast(res.data.error || 'Errore blocco IP', 'error');
+}
+
+async function unblockIP(ip) {
+  if (state.mockMode) {
+    state.blocklist = state.blocklist.filter(x => x !== ip);
+    renderBlocklist(); loadStats();
+    pushEvent({ event: 'unblock_ip', ip }); toast(`IP ${ip} sbloccato (demo)`, 'success'); return;
+  }
+  const encIp = encodeURIComponent(ip);
+  const res = await api(`/api/v1/rules/block-ip/${encIp}`, 'DELETE');
+  if (res.ok) { toast(`IP ${ip} sbloccato`, 'success'); loadBlocklist(); loadStats(); }
+  else toast(res.data.error || 'Errore sblocco IP', 'error');
+}
+
+document.getElementById('quick-block-btn').addEventListener('click', () => {
+  blockIP(document.getElementById('quick-ip').value);
+  document.getElementById('quick-ip').value = '';
+});
+document.getElementById('add-block-btn').addEventListener('click', () => {
+  blockIP(document.getElementById('add-ip').value);
+  document.getElementById('add-ip').value = '';
+});
+document.getElementById('refresh-list-btn').addEventListener('click', () => { loadBlocklist(); loadStats(); toast('Lista aggiornata','info'); });
+
+/* ==================== SSE ==================== */
+function connectSSE() {
+  if (state.sse) { state.sse.close(); }
+  const url = state.apiBase + '/api/v1/stream/events';
+  document.getElementById('sse-status').textContent = 'SSE: connessione...';
+  if (state.mockMode) {
+    document.getElementById('sse-status').textContent = 'SSE: demo (simulato)';
+    state.sseConnected = false; return;
+  }
+  try {
+    const es = new EventSource(url);
+    state.sse = es;
+    es.addEventListener('message', e => {
+      try { const d = JSON.parse(e.data); pushEvent(d); } catch(_) { pushEvent({ event: 'raw', data: e.data }); }
+    });
+    es.onopen = () => {
+      document.getElementById('sse-status').textContent = 'SSE: ● live';
+      document.getElementById('sse-status').style.color = 'var(--color-success)';
+      state.sseConnected = true;
+    };
+    es.onerror = () => {
+      document.getElementById('sse-status').textContent = 'SSE: ✕ errore';
+      document.getElementById('sse-status').style.color = 'var(--color-error)';
+      state.sseConnected = false;
+    };
+  } catch(e) { document.getElementById('sse-status').textContent = 'SSE: non supportato'; }
+}
+document.getElementById('reconnect-sse-btn').addEventListener('click', () => { connectSSE(); });
+
+function pushEvent(data) {
+  state.eventCount++;
+  document.getElementById('event-count-badge').textContent = state.eventCount;
+  const ts = new Date().toLocaleTimeString('it-IT', { hour12: false });
+  const type = data.event || 'event';
+  const badgeClass = type.includes('block') ? 'badge-error' : type.includes('unblock') ? 'badge-success' : 'badge-primary';
+  const entry = `<div class="event-entry"><span class="event-ts">${ts}</span><span class="badge ${badgeClass}">${escHtml(type)}</span><span class="event-data">${escHtml(JSON.stringify(data))}</span></div>`;
+  for (const logId of ['event-log-dash', 'event-log-full']) {
+    const log = document.getElementById(logId);
+    const emptyEl = log.querySelector('.empty');
+    if (emptyEl) emptyEl.remove();
+    log.insertAdjacentHTML('afterbegin', entry);
+    if (log.children.length > 100) log.lastElementChild.remove();
+  }
+}
+
+document.getElementById('clear-events-btn').addEventListener('click', () => {
+  ['event-log-dash','event-log-full'].forEach(id => {
+    document.getElementById(id).innerHTML = '<div class="empty">Log svuotato.</div>';
+  });
+  state.eventCount = 0;
+  document.getElementById('event-count-badge').textContent = '0';
+});
+
+/* ==================== API TESTER ==================== */
+async function runApiTest(path) {
+  state.apiBase = document.getElementById('api-base').value.trim() || state.apiBase;
+  const pre = document.getElementById('api-response');
+  pre.textContent = '// caricamento...';
+  const res = await api(path);
+  pre.textContent = JSON.stringify(res.data, null, 2);
+}
+document.getElementById('test-health').addEventListener('click', () => runApiTest('/healthz'));
+document.getElementById('test-stats').addEventListener('click', () => runApiTest('/api/v1/stats'));
+document.getElementById('test-rules').addEventListener('click', () => runApiTest('/api/v1/rules'));
+
+/* ==================== UTILS ==================== */
+function escHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+/* ==================== DEMO EVENTS ==================== */
+if (location.hostname === '' || location.hostname === 'localhost') {
+  // No auto-demo: user must login first
+}
+</script>
+</body>
+</html>
+"""
+from pathlib import Path
+p = Path('output/firewall-ui.html')
+p.write_text(html)
+print("Written:", len(html), "bytes")

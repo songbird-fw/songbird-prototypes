@@ -1,0 +1,17 @@
+server:
+  address: ":8080"
+security:
+  jwtIssuer: "firewall-backend"
+  accessTTL: "15m"
+  refreshTTL: "168h"
+  jwtSecret: "change-me-in-production"
+database:
+  dsn: "postgres://firewall:firewall@localhost:5432/firewall?sslmode=disable"
+xdp:
+  interface: "eth0"
+  attachMode: "driver"
+  programName: "xdp_firewall"
+nft:
+  tableFamily: "ip"
+  tableName: "fwctl"
+  setName: "blocked_ipv4"

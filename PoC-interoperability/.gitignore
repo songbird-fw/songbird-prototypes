@@ -1,0 +1,4 @@
+bin/
+*.o
+*_bpfel.go
+*_bpfeb.go

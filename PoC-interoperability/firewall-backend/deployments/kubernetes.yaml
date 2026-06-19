@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: firewall-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: firewall-backend
+  template:
+    metadata:
+      labels:
+        app: firewall-backend
+    spec:
+      hostNetwork: true
+      containers:
+      - name: app
+        image: firewall-backend:latest
+        securityContext:
+          capabilities:
+            add: ["NET_ADMIN", "BPF"]
+        volumeMounts:
+        - name: btf
+          mountPath: /sys/kernel/btf
+          readOnly: true
+      volumes:
+      - name: btf
+        hostPath:
+          path: /sys/kernel/btf
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: firewall-backend
+spec:
+  selector:
+    app: firewall-backend
+  ports:
+  - port: 8080
+    targetPort: 8080
