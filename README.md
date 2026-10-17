@@ -76,3 +76,16 @@ docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v $PWD/build/:/out
         quay.io/kairos/auroraboot:v0.20.1 build-iso --output /output/ oci:songbird-hadron:0.1.1
 ```
 The custom iso will be in the build folder.
+
+
+## 3. Proof of Concept - Web UI v2
+
+Web UI backed by a working slice of the Control Plane designed in `songbird-architecture`: YAML in a local Git
+repository (one commit per save), Validator with the domain-model constraints, reconciliation loop with atomic
+apply and rollback (simulated drivers), live traffic log over SSE, health, audit log, users and roles.
+Single Go binary with the frontend embedded. See [PoC-webui-v2/README.md](PoC-webui-v2/README.md).
+
+```bash
+cd PoC-webui-v2
+go run .   # http://127.0.0.1:8080 — admin / songbird
+```
