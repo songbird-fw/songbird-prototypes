@@ -1,5 +1,8 @@
-# Build outputs: binaries are built from source (or by CI), never committed
-firewall
+# Build outputs: binaries are built from source (or by CI), never committed.
+# Anchored: an unanchored `firewall` would also hide directories named firewall
+# (e.g. the schema examples in PoC-webui-v2/testdata).
+/archive/PoC-basic-xdp-firewall/firewall
+/PoC-hadron-os/firewall
 *.o
 *.bpf.o
 build/
