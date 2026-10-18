@@ -1,0 +1,13 @@
+# Build outputs: binaries are built from source (or by CI), never committed
+firewall
+*.o
+*.bpf.o
+build/
+dist/
+bin/
+/PoC-webui-v2/songbird-webui
+
+# Runtime data and dependencies
+data/
+node_modules/
+.venv/
