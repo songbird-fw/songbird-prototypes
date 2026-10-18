@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://config.songbird-fw.com/v1alpha1/interface.schema.json",
+  "title": "Interface",
+  "description": "A Physical or Logical network interface (R-020.4, R-015). The object name is the name shown to users and referenced by Zones; 'device' is the Linux netdev name.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["apiVersion", "kind", "metadata", "spec"],
+  "properties": {
+    "apiVersion": { "$ref": "common.schema.json#/$defs/apiVersion" },
+    "kind": { "const": "Interface" },
+    "metadata": { "$ref": "common.schema.json#/$defs/metadata" },
+    "spec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": { "enum": ["physical", "vlan"] },
+        "device": {
+          "description": "Linux netdev name of the Physical Interface (e.g. enp1s0). Required for type=physical.",
+          "$ref": "common.schema.json#/$defs/linuxDeviceName"
+        },
+        "parent": {
+          "description": "Name of the parent Interface object. Required for type=vlan.",
+          "$ref": "common.schema.json#/$defs/reference"
+        },
+        "vlanId": { "$ref": "common.schema.json#/$defs/vlanId" },
+        "enabled": { "type": "boolean", "default": true },
+        "mtu": { "type": "integer", "minimum": 1280, "maximum": 9216 },
+        "role": {
+          "description": "Informational role; 'internal' Interfaces are the ones allowed to reach the UI during Initial Setup (R-031.1).",
+          "enum": ["internal", "external", "dmz", "transit"],
+          "default": "internal"
+        },
+        "allowAccess": {
+          "description": "Services of the firewall itself reachable on this Interface (FortiGate: allowaccess). Empty = none. 'https' is the management UI (further restricted by System.spec.admin.trustedHosts).",
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "enum": ["https", "ping", "dns", "dhcp", "ntp"] }
+        },
+        "ipv4": { "$ref": "#/$defs/ipv4Config" },
+        "ipv6": { "$ref": "#/$defs/ipv6Config" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "physical" } } },
+          "then": { "required": ["device"], "not": { "anyOf": [ { "required": ["parent"] }, { "required": ["vlanId"] } ] } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "vlan" } } },
+          "then": { "required": ["parent", "vlanId"], "not": { "required": ["device"] } }
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "ipv4Config": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode"],
+      "properties": {
+        "mode": { "enum": ["static", "dhcp", "none"] },
+        "addresses": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "common.schema.json#/$defs/ipv4Cidr" }
+        },
+        "gateway": {
+          "description": "Default gateway via this Interface (static mode only). Makes this Interface a WAN candidate.",
+          "$ref": "common.schema.json#/$defs/ipv4Address"
+        }
+      },
+      "allOf": [
+        { "if": { "properties": { "mode": { "const": "static" } } }, "then": { "required": ["addresses"] } },
+        { "if": { "properties": { "mode": { "enum": ["dhcp", "none"] } } }, "then": { "not": { "anyOf": [ { "required": ["addresses"] }, { "required": ["gateway"] } ] } } }
+      ]
+    },
+    "ipv6Config": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode"],
+      "properties": {
+        "mode": {
+          "description": "static: fixed addresses. slaac: this Interface is a client (typical WAN). dhcpv6-pd: client requesting prefix delegation (R-017.4). none: IPv6 disabled.",
+          "enum": ["static", "slaac", "dhcpv6-pd", "none"]
+        },
+        "addresses": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "common.schema.json#/$defs/ipv6Cidr" }
+        },
+        "gateway": { "$ref": "common.schema.json#/$defs/ipv6Address" },
+        "routerAdvertisement": {
+          "description": "Send RAs on this Interface so hosts autoconfigure (R-004). Only meaningful with static addresses or a delegated prefix.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "managedFlag": { "type": "boolean", "default": false },
+            "otherConfigFlag": { "type": "boolean", "default": false },
+            "delegatedPrefixFrom": {
+              "description": "Interface whose DHCPv6-PD lease supplies the prefix to advertise here.",
+              "$ref": "common.schema.json#/$defs/reference"
+            }
+          }
+        }
+      },
+      "allOf": [
+        { "if": { "properties": { "mode": { "const": "static" } } }, "then": { "required": ["addresses"] } },
+        { "if": { "properties": { "mode": { "enum": ["slaac", "dhcpv6-pd", "none"] } } }, "then": { "not": { "anyOf": [ { "required": ["addresses"] }, { "required": ["gateway"] } ] } } }
+      ]
+    }
+  }
+}

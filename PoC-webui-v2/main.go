@@ -1,11 +1,15 @@
 // Command songbird-webui is a proof of concept of the Songbird Web UI and of
 // the Control Plane slice behind it (API Server, Config Manager, Validator,
 // Reconciler, Observer, Audit Log), built as one Go binary (C-004).
+//
+//	songbird-webui [-listen addr] [-data dir]   run the appliance UI
+//	songbird-webui validate [-appliance] <dir>  validate a configuration tree (R-052)
 package main
 
 import (
 	"embed"
 	"flag"
+	"fmt"
 	"io/fs"
 	"log"
 	"net/http"
@@ -22,12 +26,16 @@ import (
 	m "github.com/songbird-fw/songbird-prototypes/PoC-webui-v2/internal/model"
 	"github.com/songbird-fw/songbird-prototypes/PoC-webui-v2/internal/observer"
 	"github.com/songbird-fw/songbird-prototypes/PoC-webui-v2/internal/reconciler"
+	"github.com/songbird-fw/songbird-prototypes/PoC-webui-v2/internal/validator"
 )
 
 //go:embed web
 var webFS embed.FS
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "validate" {
+		os.Exit(validateCmd(os.Args[2:]))
+	}
 	listen := flag.String("listen", "127.0.0.1:8080", "address to listen on")
 	data := flag.String("data", "./data", "data directory (config repository, runtime state, audit log)")
 	cert := flag.String("tls-cert", "", "TLS certificate (enables HTTPS, R-038)")
@@ -64,15 +72,15 @@ func main() {
 	obs := observer.New(rec, ev)
 	go obs.Run()
 
-	users := func() m.List[m.UserSpec] {
+	authPolicy := func() auth.Policy {
 		t, _, err := store.Read("HEAD")
 		if err != nil {
-			return nil
+			return auth.PolicyOf(&m.Tree{})
 		}
-		return t.Users
+		return auth.PolicyOf(t)
 	}
 	web, _ := fs.Sub(webFS, "web")
-	srv := &api.Server{Store: store, Rec: rec, Auth: auth.New(users), Audit: auditLog, Ev: ev, Obs: obs, Web: web, ApplyWait: 5 * time.Second}
+	srv := &api.Server{Store: store, Rec: rec, Auth: auth.New(authPolicy), Audit: auditLog, Ev: ev, Obs: obs, Web: web, ApplyWait: 5 * time.Second}
 
 	hs := &http.Server{Addr: *listen, Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second}
 	if *cert != "" {
@@ -81,4 +89,38 @@ func main() {
 	}
 	log.Printf("Songbird Web UI PoC on http://%s (admin/songbird, auditor/auditor)", *listen)
 	log.Fatal(hs.ListenAndServe())
+}
+
+// validateCmd is the Go prototype of `songbird validate <dir>` (R-052): the
+// same two layers and rule ids as songbird-yaml-schema/validate.py, plus the
+// domain-model constraints. Exit 0 = valid, 1 = errors, 2 = usage.
+func validateCmd(args []string) int {
+	fs := flag.NewFlagSet("validate", flag.ContinueOnError)
+	appliance := fs.Bool("appliance", false, "also require what a running appliance has: System, the predefined palette, an admin User")
+	quiet := fs.Bool("q", false, "do not print warnings")
+	if err := fs.Parse(args); err != nil || fs.NArg() != 1 {
+		fmt.Fprintln(os.Stderr, "usage: songbird-webui validate [-appliance] [-q] <dir>")
+		return 2
+	}
+	tree, src, errs := validator.LoadDir(fs.Arg(0))
+	errs = append(errs, validator.Relocate(validator.ValidateWith(tree, validator.Options{Appliance: *appliance}), tree, src)...)
+	objects := 0
+	tree.Each(func(m.Doc) { objects++ })
+	nerr, nwarn := 0, 0
+	for _, e := range errs {
+		if e.Severity == validator.SevError {
+			nerr++
+		} else {
+			nwarn++
+			if *quiet {
+				continue
+			}
+		}
+		fmt.Println(e)
+	}
+	fmt.Printf("%d objects, %d errors, %d warnings\n", objects, nerr, nwarn)
+	if nerr > 0 {
+		return 1
+	}
+	return 0
 }

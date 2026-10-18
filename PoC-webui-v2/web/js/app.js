@@ -1,7 +1,8 @@
-import { state, h, icon, mount, api, loadConfig, short, isAdmin, toast } from './core.js';
+import { state, h, icon, mount, api, loadConfig, short, isAdmin, toast, findings, sys } from './core.js';
 import dashboard from './pages/dashboard.js';
 import policies from './pages/policies.js';
-import interfaces from './pages/interfaces.js';
+import network from './pages/network.js';
+import system from './pages/system.js';
 import objects from './pages/objects.js';
 import traffic from './pages/traffic.js';
 import changes from './pages/changes.js';
@@ -16,10 +17,11 @@ const ROUTES = [
   { path: 'diagnostics', label: 'Diagnostics', icon: 'heart', page: diagnostics },
   { group: 'Configuration' },
   { path: 'policies', label: 'Policies', icon: 'shield', page: policies },
-  { path: 'interfaces', label: 'Interfaces & routing', icon: 'network', page: interfaces },
+  { path: 'network', label: 'Network', icon: 'network', page: network },
   { path: 'objects', label: 'Objects', icon: 'box', page: objects },
+  { path: 'system', label: 'System', icon: 'cog', page: system },
   { path: 'changes', label: 'Changes', icon: 'history', page: changes },
-  { group: 'System' },
+  { group: 'Administration' },
   { path: 'users', label: 'Users', icon: 'users', page: users },
   { path: 'audit', label: 'Audit log', icon: 'file', page: audit },
 ];
@@ -36,8 +38,13 @@ function theme() {
 function applyTheme(t) {
   if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme;
 }
+// The viewer's choice wins; otherwise System.admin.ui.theme; "auto" follows the OS.
+function configuredTheme() {
+  const t = sys().admin?.ui?.theme;
+  return t === 'dark' || t === 'light' ? t : null;
+}
 function effectiveTheme() {
-  return theme() || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  return theme() || configuredTheme() || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
 }
 function toggleTheme() {
   const next = effectiveTheme() === 'dark' ? 'light' : 'dark';
@@ -46,6 +53,7 @@ function toggleTheme() {
   renderTop();
 }
 applyTheme(theme());
+state.listeners.add(() => { if (!theme()) applyTheme(configuredTheme()); });
 
 // ---- login ---------------------------------------------------------------------
 function loginPage() {
@@ -85,7 +93,7 @@ function shell() {
     h('aside', { class: 'side' },
       h('div', { class: 'brand' }, h('span', { class: 'logo' }, icon('shield')), h('div', null, 'Songbird', h('small', null, 'firewall · PoC'))),
       nav,
-      h('div', { class: 'foot' }, 'Config is YAML in Git.', h('br'), 'Every save is a commit.')),
+      h('div', { class: 'foot' }, 'Config is YAML in Git', h('br'), h('code', null, 'config.songbird-fw.com/v1alpha1'), h('br'), 'Every save is a commit.')),
     h('div', { class: 'main' }, topStatus, banner, content)));
 }
 
@@ -95,6 +103,16 @@ function stateBadge(s) {
   return h('span', { class: ['badge', cls], title: 'Reconciler state (reconciliation.md §9)' }, s.state);
 }
 
+// Validator findings on HEAD: errors block an Apply, warnings never do.
+function findingsPill() {
+  const f = findings();
+  const errs = f.filter((e) => e.severity === 'error').length, warns = f.length - errs;
+  if (!f.length) return h('a', { class: 'pill', href: '#/diagnostics', title: 'HEAD passes the schema and every semantic rule' }, icon('check', 'ok-ico'), 'valid');
+  return h('a', { class: 'pill', href: '#/diagnostics', title: 'Validator findings on HEAD' },
+    errs ? h('span', { class: 'badge bad' }, `${errs} error${errs > 1 ? 's' : ''}`) : null,
+    warns ? h('span', { class: 'badge warn' }, `${warns} warning${warns > 1 ? 's' : ''}`) : null);
+}
+
 function renderTop() {
   if (!topStatus) return;
   const s = state.status;
@@ -102,6 +120,7 @@ function renderTop() {
     h('span', { class: 'pill', title: 'Desired state: HEAD of the configuration repository' }, 'Revision', h('code', null, short(state.config?.revision))),
     stateBadge(s),
     s && s.appliedCommit && s.appliedCommit !== s.desiredCommit && h('span', { class: 'pill' }, 'Running', h('code', null, short(s.appliedCommit))),
+    findingsPill(),
     h('span', { class: 'spacer' }),
     h('span', { class: 'pill' }, icon('users'), state.me?.u, h('span', { class: 'muted' }, state.me?.r)),
     h('button', { class: 'ghost', onclick: toggleTheme, title: 'Toggle dark theme', 'aria-label': 'Toggle dark theme' }, icon(effectiveTheme() === 'dark' ? 'sun' : 'moon')),

@@ -8,11 +8,7 @@
 package reconciler
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
 	"fmt"
-	"net/netip"
 	"os"
 	"path/filepath"
 	"strings"
@@ -67,12 +63,15 @@ type DriverStatus struct {
 
 // PlanSummary is what the (simulated) Compiler produced for the Data Plane.
 type PlanSummary struct {
-	Zones        int               `json:"zones"`
-	Policies     int               `json:"policies"`
-	Disabled     int               `json:"disabled"`
-	MatchEntries int               `json:"matchEntries"`
-	LocalIn      map[string]any    `json:"localIn"`
-	Sections     map[string]string `json:"sections"`
+	RuleSets     int                 `json:"ruleSets"`
+	Pairs        int                 `json:"pairs"` // directed Interface pairs after Zone expansion
+	Policies     int                 `json:"policies"`
+	Disabled     int                 `json:"disabled"`
+	MatchEntries int                 `json:"matchEntries"`
+	DNATEntries  int                 `json:"dnatEntries"`
+	LocalIn      map[string][]string `json:"localIn"`
+	IntraZone    map[string]string   `json:"intraZone"`
+	Sections     map[string]string   `json:"sections"`
 }
 
 type Status struct {
@@ -266,7 +265,7 @@ func (r *Reconciler) reconcile(rev string) Attempt {
 	r.mu.Unlock()
 
 	// 2. Validate
-	if errs := validator.Validate(tree); len(errs) > 0 {
+	if errs := validator.Errors(validator.Validate(tree)); len(errs) > 0 { // warnings never block an Apply
 		a.Result = "invalid"
 		a.Error = &ErrorInfo{Step: "validate", Message: fmt.Sprintf("%d validation error(s)", len(errs)), Validation: errs}
 		return finish(Failed)
@@ -364,129 +363,4 @@ func (r *Reconciler) apply(a *Attempt) *ErrorInfo {
 		}
 	}
 	return nil
-}
-
-// compile is a simulated Compiler: pure, deterministic. It splits the tree
-// into one section per driver and hashes each, so the Reconciler can skip
-// drivers a commit does not affect (§2). It also expands groups to count
-// the match entries the Data Plane would receive (R-014.1–R-014.3).
-func compile(t *m.Tree) PlanSummary {
-	type ifaceNet struct {
-		Name, Role, Type, Parent string
-		VlanID                   int
-		Addresses                []string
-	}
-	var netSec struct {
-		Interfaces []ifaceNet
-		Routes     any
-	}
-	var dhcpSec []any
-	localIn := map[string]any{}
-	for _, i := range t.Interfaces {
-		netSec.Interfaces = append(netSec.Interfaces, ifaceNet{i.Metadata.Name, i.Spec.Role, i.Spec.Type, i.Spec.Parent, i.Spec.VlanID, i.Spec.Addresses})
-		if i.Spec.Dhcp != nil {
-			dhcpSec = append(dhcpSec, map[string]any{"iface": i.Metadata.Name, "dhcp": i.Spec.Dhcp})
-		}
-		acc := append([]string{}, i.Spec.AllowAccess...)
-		if i.Spec.Dhcp != nil && i.Spec.Dhcp.Enabled {
-			acc = append(acc, "dhcp(udp/67, DM-34)")
-		}
-		localIn[i.Metadata.Name] = acc
-	}
-	netSec.Routes = t.StaticRoutes
-
-	sizes := map[string]int{}
-	for _, a := range t.Addresses {
-		sizes[a.Metadata.Name] = 1
-	}
-	for _, g := range t.AddressGroups {
-		sizes[g.Metadata.Name] = len(g.Spec.Members)
-	}
-	for _, s := range t.Services {
-		sizes[s.Metadata.Name] = 1
-	}
-	for _, g := range t.ServiceGroups {
-		sizes[g.Metadata.Name] = len(g.Spec.Members)
-	}
-	size := func(n string) int {
-		if strings.HasSuffix(n, validator.InterfaceAddressesSuffix) {
-			for _, i := range t.Interfaces {
-				if i.Metadata.Name+validator.InterfaceAddressesSuffix == n {
-					return len(i.Spec.Addresses)
-				}
-			}
-		}
-		if v, ok := sizes[n]; ok {
-			return v
-		}
-		return 1
-	}
-	sum := func(l []string) int {
-		n := 0
-		for _, x := range l {
-			n += size(x)
-		}
-		return n
-	}
-
-	p := PlanSummary{Zones: len(t.Zones), LocalIn: localIn, Sections: map[string]string{}}
-	type dpPolicy struct {
-		Zone string
-		m.Policy
-	}
-	var dp []any
-	for _, z := range t.Zones {
-		for _, pol := range z.Spec.Policies {
-			if !pol.IsEnabled() {
-				p.Disabled++
-				continue
-			}
-			p.Policies++
-			p.MatchEntries += sum(pol.Sources) * sum(pol.Destinations) * sum(pol.Services)
-			pol.Colour = "" // colours never reach the Data Plane
-			dp = append(dp, dpPolicy{z.Metadata.Name, pol})
-		}
-	}
-	// Resolved objects referenced by policies are part of the dataplane section.
-	stripColour := func(v any) any {
-		b, _ := json.Marshal(v)
-		var x any
-		_ = json.Unmarshal(b, &x)
-		if l, ok := x.([]any); ok {
-			for _, it := range l {
-				if mm, ok := it.(map[string]any); ok {
-					if md, ok := mm["metadata"].(map[string]any); ok {
-						delete(md, "colour")
-					}
-				}
-			}
-		}
-		return x
-	}
-	dpSec := []any{dp, stripColour(t.Addresses), stripColour(t.AddressGroups), stripColour(t.VirtualIPs),
-		stripColour(t.Services), stripColour(t.ServiceGroups), stripColour(t.IpPools), localIn, ifaceAddrs(t)}
-
-	p.Sections["network"] = hash(netSec)
-	p.Sections["dataplane"] = hash(dpSec)
-	p.Sections["dhcp"] = hash(dhcpSec)
-	p.Sections["dns"] = hash([]any{"forwarder", ifaceAddrs(t)})
-	return p
-}
-
-func ifaceAddrs(t *m.Tree) map[string][]string {
-	out := map[string][]string{}
-	for _, i := range t.Interfaces {
-		for _, a := range i.Spec.Addresses {
-			if p, err := netip.ParsePrefix(a); err == nil {
-				out[i.Metadata.Name] = append(out[i.Metadata.Name], p.Masked().String())
-			}
-		}
-	}
-	return out
-}
-
-func hash(v any) string {
-	b, _ := json.Marshal(v)
-	s := sha256.Sum256(b)
-	return hex.EncodeToString(s[:])[:12]
 }

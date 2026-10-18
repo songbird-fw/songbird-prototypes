@@ -1,0 +1,34 @@
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Interface"
+metadata: { name: "lan" }
+spec: { type: "physical", device: "eth0" }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Interface"
+metadata: { name: "wan" }
+spec: { type: "physical", device: "eth1" }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Address"
+metadata: { name: "pub" }
+spec: { subnet: "1.2.3.4/32" }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Address"
+metadata: { name: "srv" }
+spec: { subnet: "10.0.0.1/32" }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Service"
+metadata: { name: "https" }
+spec: { protocols: [{ protocol: "tcp", port: 443 }] }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "RuleSet"
+metadata: { name: "p1" }
+spec: { from: "lan", to: "wan", rules: [] }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "RuleSet"
+metadata: { name: "p2" }
+spec: { from: "lan", to: "wan", rules: [] }

@@ -1,6 +1,6 @@
 // Local Users and the built-in Roles admin / read-only (R-043.8, R-043.9).
 // Users are configuration too: each one is a YAML file with a bcrypt hash.
-import { state, h, icon, mount, objs, isAdmin, modal, save, deleteObject, showYAML, validationBox } from '../core.js';
+import { state, h, icon, mount, objs, sys, isAdmin, modal, save, deleteObject, showYAML, validationBox } from '../core.js';
 
 function userForm(u) {
   const isNew = !u;
@@ -30,7 +30,7 @@ export default {
     const users = objs('User');
     mount(root,
       h('div', { class: 'page-head' },
-        h('div', null, h('h1', null, 'Users'), h('p', null, 'Local administrative accounts. Sessions expire after 8 h; 5 failed logins lock the source address for 10 min.')),
+        h('div', null, h('h1', null, 'Users'), h('p', null, `Local administrative accounts (a PoC extension kind, users/). Sessions expire after ${sys().admin?.sessionTimeout || '8h'}; ${sys().admin?.lockout?.threshold || 5} failed logins lock the source address for ${sys().admin?.lockout?.duration || '10m'} (System.admin).`)),
         h('span', { class: 'spacer' }), isAdmin() && h('button', { class: 'primary', onclick: () => userForm() }, icon('plus'), 'User')),
       h('section', { class: 'card' }, h('table', null,
         h('thead', null, h('tr', null, ['User', 'Role', 'Two-factor', ''].map((t) => h('th', null, t)))),

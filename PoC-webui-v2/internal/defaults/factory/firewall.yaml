@@ -1,0 +1,122 @@
+# One RuleSet per (from, to) pair; order = position in spec.rules, first match wins.
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "RuleSet"
+metadata: { name: "internal-to-untrusted", comment: "Office and servers going to the Internet", color: "blue" }
+spec:
+  from: "internal"
+  to: "untrusted"
+  rules:
+    - name: "block-printers-internet"
+      source: ["printers"]
+      destination: ["any"]
+      service: ["any"]
+      action: "drop"
+      log: "all"
+    - name: "backup-offsite"
+      source: ["grp-backup"]
+      destination: ["offsite-backup"]
+      service: ["offsite-sync"]
+      action: "accept"
+      nat: { type: "snat" }
+    - name: "office-web-dns"
+      comment: "Web, DNS, NTP and ping; masquerade to the WAN address"
+      source: ["grp-office"]
+      destination: ["any"]
+      service: ["web", "dns", "ntp", "ping"]
+      action: "accept"
+      nat: { type: "snat" }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "RuleSet"
+metadata: { name: "guest-to-untrusted", color: "purple" }
+spec:
+  from: "guest"
+  to: "untrusted"
+  rules:
+    - name: "guest-web"
+      comment: "Guests leave from the public pool, not from our main address"
+      source: ["guest-subnet"]
+      destination: ["any"]
+      service: ["web", "dns"]
+      action: "accept"
+      nat: { type: "snat", translateIpTo: "wan-pool" }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "RuleSet"
+metadata: { name: "untrusted-to-dmz", comment: "Published services (DNAT)", color: "red" }
+spec:
+  from: "untrusted"
+  to: "dmz-zone"
+  rules:
+    - name: "publish-web"
+      comment: "Public 443 -> web-01:8443 (matched before translation)"
+      source: ["any"]
+      destination: ["wan-ip"]
+      service: ["https"]
+      action: "accept"
+      nat: { type: "dnat", translateIpTo: "web-01", translateServiceTo: "https-8443" }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "RuleSet"
+metadata: { name: "internal-to-dmz" }
+spec:
+  from: "internal"
+  to: "dmz-zone"
+  rules:
+    - name: "admin-ssh"
+      source: ["admin-pcs"]
+      destination: ["web-servers"]
+      service: ["ssh"]
+      action: "accept"
+    - name: "office-to-web"
+      source: ["grp-office"]
+      destination: ["web-servers"]
+      service: ["web"]
+      action: "accept"
+    - name: "legacy-telnet"
+      comment: "Kept for reference, disabled"
+      enabled: false
+      source: ["grp-office"]
+      destination: ["web-servers"]
+      service: ["any"]
+      action: "drop"
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "RuleSet"
+metadata: { name: "dmz-to-internal", comment: "Backup traffic from the DMZ to the Veeam server only", color: "green" }
+spec:
+  from: "dmz-zone"
+  to: "internal"
+  rules:
+    - name: "dmz-backup"
+      source: ["web-servers"]
+      destination: ["veeam-server"]
+      service: ["veeam"]
+      action: "accept"
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "RuleSet"
+metadata: { name: "lan1-to-lan2", comment: "Intra-zone: office to servers (DM-38 allows members here)" }
+spec:
+  from: "lan1"
+  to: "lan2"
+  rules:
+    - name: "admin-full"
+      source: ["admin-pcs"]
+      destination: ["lan2-subnet"]
+      service: ["any"]
+      action: "accept"
+    - name: "office-to-servers"
+      source: ["lan1-subnet"]
+      destination: ["nas", "printers"]
+      service: ["smb", "https"]
+      action: "accept"
+      log: "none"
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "RuleSet"
+metadata: { name: "dmz-to-untrusted", comment: "Empty on purpose: the DMZ has no Internet access" }
+spec:
+  from: "dmz-zone"
+  to: "untrusted"
+  rules: []

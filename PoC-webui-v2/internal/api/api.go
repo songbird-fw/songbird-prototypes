@@ -11,16 +11,15 @@ import (
 	"io/fs"
 	"net"
 	"net/http"
-	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/songbird-fw/songbird-prototypes/PoC-webui-v2/internal/audit"
 	"github.com/songbird-fw/songbird-prototypes/PoC-webui-v2/internal/auth"
 	"github.com/songbird-fw/songbird-prototypes/PoC-webui-v2/internal/configstore"
 	"github.com/songbird-fw/songbird-prototypes/PoC-webui-v2/internal/events"
-	m "github.com/songbird-fw/songbird-prototypes/PoC-webui-v2/internal/model"
 	"github.com/songbird-fw/songbird-prototypes/PoC-webui-v2/internal/observer"
 	"github.com/songbird-fw/songbird-prototypes/PoC-webui-v2/internal/reconciler"
 	"github.com/songbird-fw/songbird-prototypes/PoC-webui-v2/internal/validator"
@@ -37,6 +36,8 @@ type Server struct {
 	Obs       *observer.Observer
 	Web       fs.FS
 	ApplyWait time.Duration
+
+	findCache sync.Map // revision -> []validator.Error
 }
 
 type handler func(w http.ResponseWriter, r *http.Request, s auth.Session)
@@ -53,6 +54,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /api/v1/objects/{kind}/{name}", s.writer(s.deleteObject))
 	mux.HandleFunc("POST /api/v1/validate/{kind}/{name}", s.authed(s.validate))
 	mux.HandleFunc("PUT /api/v1/users/{name}", s.writer(s.putUser))
+	mux.HandleFunc("GET /api/v1/export", s.authed(s.export))
+	mux.HandleFunc("POST /api/v1/import", s.writer(s.importConfig))
+	mux.HandleFunc("GET /api/v1/schema/{file}", s.authed(s.schemaFile))
 	mux.HandleFunc("GET /api/v1/status", s.authed(func(w http.ResponseWriter, r *http.Request, _ auth.Session) { writeJSON(w, 200, s.Rec.Status()) }))
 	mux.HandleFunc("GET /api/v1/history", s.authed(s.history))
 	mux.HandleFunc("GET /api/v1/history/{rev}/diff", s.authed(s.diff))
@@ -154,6 +158,7 @@ type apiError struct {
 	code       int
 	msg        string
 	validation []validator.Error
+	warnings   []validator.Error
 }
 
 func (e *apiError) Error() string { return e.msg }
@@ -166,6 +171,9 @@ func (s *Server) fail(w http.ResponseWriter, err error) {
 		body := map[string]any{"error": ae.msg}
 		if ae.validation != nil {
 			body["validation"] = ae.validation
+		}
+		if ae.warnings != nil {
+			body["warnings"] = ae.warnings
 		}
 		writeJSON(w, ae.code, body)
 	case errors.As(err, &ce):
@@ -203,7 +211,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	case err != nil:
 		s.Audit.Record(req.Username, ip, "auth.login-failed", "", "", nil, nil)
 		if locked {
-			s.Audit.Record(req.Username, ip, "auth.lockout", "", fmt.Sprintf("%d failures, locked for %s", auth.MaxFailures, auth.LockoutFor), nil, nil)
+			s.Audit.Record(req.Username, ip, "auth.lockout", "", fmt.Sprintf("%d failures, locked for %s", s.Auth.Conf().MaxFailures, s.Auth.Conf().LockoutFor), nil, nil)
 		}
 		writeErr(w, 401, err.Error())
 		return
@@ -218,282 +226,6 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request, ss auth.Session)
 	http.SetCookie(w, &http.Cookie{Name: cookieName, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, SameSite: http.SameSiteStrictMode})
 	s.Audit.Record(ss.User, clientIP(r), "auth.logout", "", "", nil, nil)
 	writeJSON(w, 200, map[string]string{"ok": "bye"})
-}
-
-// ---- configuration ---------------------------------------------------------------
-
-func redact(t *m.Tree) {
-	for i := range t.Users {
-		t.Users[i].Spec.PasswordHash = ""
-	}
-}
-
-func (s *Server) config(w http.ResponseWriter, r *http.Request, _ auth.Session) {
-	t, rev, err := s.Store.Read("HEAD")
-	if err != nil {
-		s.fail(w, err)
-		return
-	}
-	redact(t)
-	w.Header().Set("ETag", `"`+rev+`"`)
-	writeJSON(w, 200, map[string]any{
-		"revision":     rev,
-		"objects":      t,
-		"activeRoutes": observer.ActiveRoutes(t),
-		"limits":       map[string]int{"policiesPerZone": validator.MaxPoliciesPerZone},
-	})
-}
-
-func (s *Server) objectYAML(w http.ResponseWriter, r *http.Request, _ auth.Session) {
-	kind, name := r.PathValue("kind"), r.PathValue("name")
-	if _, ok := m.KindByName(kind); !ok || !m.ValidName(name) {
-		writeErr(w, 404, "unknown object")
-		return
-	}
-	rev := r.URL.Query().Get("rev")
-	if rev == "" {
-		rev = "HEAD"
-	}
-	b, err := s.Store.File(rev, m.FilePath(kind, name))
-	if err != nil {
-		writeErr(w, 404, "not found at "+rev)
-		return
-	}
-	if kind == "User" {
-		var lines []string
-		for _, l := range strings.Split(string(b), "\n") {
-			if strings.Contains(l, "passwordHash:") {
-				l = "  passwordHash: <redacted>"
-			}
-			lines = append(lines, l)
-		}
-		b = []byte(strings.Join(lines, "\n"))
-	}
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	_, _ = w.Write(b)
-}
-
-// newErrors keeps only errors that HEAD did not already have, so a change is
-// judged on what it breaks, not on pre-existing problems (e.g. after a pull).
-func newErrors(before, after []validator.Error) []validator.Error {
-	old := map[string]bool{}
-	for _, e := range before {
-		old[e.String()] = true
-	}
-	var out []validator.Error
-	for _, e := range after {
-		if !old[e.String()] {
-			out = append(out, e)
-		}
-	}
-	return out
-}
-
-// mutation builds the change for PUT/DELETE of one object, enforcing DM-21
-// and validating the resulting tree.
-func mutation(kind, name string, body []byte, create, del bool, before, after *any) func(t *m.Tree) ([]configstore.Change, error) {
-	return func(t *m.Tree) ([]configstore.Change, error) {
-		if _, ok := m.KindByName(kind); !ok {
-			return nil, &apiError{code: 404, msg: "unknown kind " + kind}
-		}
-		baseline := validator.Validate(t)
-		old, exists := t.Get(kind, name)
-		*before = old
-		switch {
-		case create && exists:
-			return nil, &apiError{code: 409, msg: fmt.Sprintf("%s %q already exists", kind, name)}
-		case !create && !exists:
-			return nil, &apiError{code: 404, msg: fmt.Sprintf("%s %q does not exist", kind, name)}
-		}
-		var change configstore.Change
-		if del {
-			if validator.Builtin(old) {
-				return nil, &apiError{code: 422, msg: "predefined objects cannot be deleted (DM-21)"}
-			}
-			t.Delete(kind, name)
-			change = configstore.Change{Kind: kind, Name: name}
-		} else {
-			n, err := t.PutJSON(kind, body)
-			if err != nil {
-				return nil, &apiError{code: 400, msg: err.Error()}
-			}
-			if n != name {
-				return nil, &apiError{code: 400, msg: "metadata.name must match the URL (renaming is not supported)"}
-			}
-			obj, _ := t.Get(kind, name)
-			if exists && validator.Builtin(old) {
-				if c, ok := old.(m.Colour); ok { // R-055.1: only meaning may change
-					nc := obj.(m.Colour)
-					if nc.Spec.Value != c.Spec.Value || !nc.Spec.Builtin {
-						return nil, &apiError{code: 422, msg: "the value of a predefined Colour cannot change (R-055.1)"}
-					}
-				} else if !reflect.DeepEqual(old, obj) {
-					return nil, &apiError{code: 422, msg: "predefined objects cannot be edited (DM-21)"}
-				}
-			}
-			if validator.Builtin(obj) && (!exists || !validator.Builtin(old)) {
-				return nil, &apiError{code: 422, msg: "builtin is reserved for predefined objects (DM-21)"}
-			}
-			*after = obj
-			change = configstore.Change{Kind: kind, Name: name, Obj: obj}
-		}
-		if errs := newErrors(baseline, validator.Validate(t)); len(errs) > 0 {
-			return nil, &apiError{code: 422, msg: "the change is not valid", validation: errs}
-		}
-		return []configstore.Change{change}, nil
-	}
-}
-
-func readBody(r *http.Request) ([]byte, error) {
-	return io.ReadAll(io.LimitReader(r.Body, 1<<20))
-}
-
-func (s *Server) putObject(w http.ResponseWriter, r *http.Request, ss auth.Session) {
-	kind, name := r.PathValue("kind"), r.PathValue("name")
-	if kind == "User" {
-		writeErr(w, 400, "use PUT /api/v1/users/{name}")
-		return
-	}
-	body, err := readBody(r)
-	if err != nil {
-		writeErr(w, 400, err.Error())
-		return
-	}
-	base := revision(r)
-	if base == "" {
-		writeErr(w, 428, "If-Match with the revision you edited is required")
-		return
-	}
-	create := r.URL.Query().Get("create") == "1"
-	verb := "update"
-	if create {
-		verb = "create"
-	}
-	var before, after any
-	commit, err := s.Store.Update(base, configstore.Author{Name: ss.User, Source: clientIP(r)},
-		fmt.Sprintf("%s %s/%s", verb, kind, name), mutation(kind, name, body, create, false, &before, &after))
-	if err != nil {
-		s.fail(w, err)
-		return
-	}
-	s.Audit.Record(ss.User, clientIP(r), "config."+verb, kind+"/"+name, "commit "+commit[:8], before, after)
-	s.respondApplied(w, commit)
-}
-
-func (s *Server) deleteObject(w http.ResponseWriter, r *http.Request, ss auth.Session) {
-	kind, name := r.PathValue("kind"), r.PathValue("name")
-	base := revision(r)
-	if base == "" {
-		writeErr(w, 428, "If-Match with the revision you edited is required")
-		return
-	}
-	var before, after any
-	commit, err := s.Store.Update(base, configstore.Author{Name: ss.User, Source: clientIP(r)},
-		fmt.Sprintf("delete %s/%s", kind, name), mutation(kind, name, nil, false, true, &before, &after))
-	if err != nil {
-		s.fail(w, err)
-		return
-	}
-	if u, ok := before.(m.User); ok {
-		u.Spec.PasswordHash = ""
-		before = u
-	}
-	s.Audit.Record(ss.User, clientIP(r), "config.delete", kind+"/"+name, "commit "+commit[:8], before, nil)
-	s.respondApplied(w, commit)
-}
-
-// validate is a dry run used by the forms for immediate feedback (R-009.1).
-func (s *Server) validate(w http.ResponseWriter, r *http.Request, _ auth.Session) {
-	kind, name := r.PathValue("kind"), r.PathValue("name")
-	body, err := readBody(r)
-	if err != nil {
-		writeErr(w, 400, err.Error())
-		return
-	}
-	t, _, err := s.Store.Read("HEAD")
-	if err != nil {
-		s.fail(w, err)
-		return
-	}
-	var before, after any
-	_, err = mutation(kind, name, body, r.URL.Query().Get("create") == "1", false, &before, &after)(t)
-	var ae *apiError
-	if errors.As(err, &ae) {
-		writeJSON(w, 200, map[string]any{"valid": false, "error": ae.msg, "validation": ae.validation})
-		return
-	}
-	writeJSON(w, 200, map[string]any{"valid": err == nil})
-}
-
-func (s *Server) putUser(w http.ResponseWriter, r *http.Request, ss auth.Session) {
-	name := r.PathValue("name")
-	var req struct {
-		Role     string `json:"role"`
-		Password string `json:"password"`
-	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&req); err != nil {
-		writeErr(w, 400, "invalid request")
-		return
-	}
-	if req.Password != "" && len(req.Password) < 8 {
-		writeErr(w, 422, "password must have at least 8 characters")
-		return
-	}
-	var hash string
-	if req.Password != "" {
-		var err error
-		if hash, err = auth.HashPassword(req.Password); err != nil {
-			s.fail(w, err)
-			return
-		}
-	}
-	var verb string
-	commit, err := s.Store.Update(revision(r), configstore.Author{Name: ss.User, Source: clientIP(r)}, "update User/"+name, func(t *m.Tree) ([]configstore.Change, error) {
-		baseline := validator.Validate(t)
-		old, exists := t.Get("User", name)
-		u := m.User{APIVersion: m.APIVersion, Kind: "User", Metadata: m.Meta{Name: name}, Spec: m.UserSpec{Role: req.Role, PasswordHash: hash}}
-		verb = "config.update"
-		if exists {
-			if hash == "" {
-				u.Spec.PasswordHash = old.(m.User).Spec.PasswordHash
-			}
-		} else {
-			verb = "config.create"
-			if hash == "" {
-				return nil, &apiError{code: 422, msg: "a password is required for a new User"}
-			}
-		}
-		b, _ := json.Marshal(u)
-		if _, err := t.PutJSON("User", b); err != nil {
-			return nil, &apiError{code: 400, msg: err.Error()}
-		}
-		if errs := newErrors(baseline, validator.Validate(t)); len(errs) > 0 {
-			return nil, &apiError{code: 422, msg: "the change is not valid", validation: errs}
-		}
-		return []configstore.Change{{Kind: "User", Name: name, Obj: u}}, nil
-	})
-	if err != nil {
-		s.fail(w, err)
-		return
-	}
-	detail := "commit " + commit[:8]
-	if req.Password != "" {
-		detail += ", password set"
-	}
-	s.Audit.Record(ss.User, clientIP(r), verb, "User/"+name, detail, nil, map[string]string{"role": req.Role})
-	s.respondApplied(w, commit)
-}
-
-// respondApplied waits for the reconciliation of the commit, so the UI can
-// say "saved and applied" or "saved, not applied: reason" (reconciliation.md §5).
-func (s *Server) respondApplied(w http.ResponseWriter, commit string) {
-	a, done := s.Rec.Wait(commit, s.ApplyWait)
-	writeJSON(w, 200, map[string]any{
-		"commit":  commit,
-		"applied": done && (a.Result == "applied" || a.Result == "no-op"),
-		"pending": !done,
-		"attempt": a,
-	})
 }
 
 // ---- history -----------------------------------------------------------------------
@@ -529,7 +261,7 @@ func (s *Server) revert(w http.ResponseWriter, r *http.Request, ss auth.Session)
 		return
 	}
 	s.Audit.Record(ss.User, clientIP(r), "config.revert", "", "to "+rev[:min(8, len(rev))]+", commit "+commit[:8], nil, nil)
-	s.respondApplied(w, commit)
+	s.respondApplied(w, commit, nil)
 }
 
 // ---- events, audit, diagnostics ---------------------------------------------------------

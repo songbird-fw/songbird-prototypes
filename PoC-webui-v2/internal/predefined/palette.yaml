@@ -1,0 +1,36 @@
+# Predefined palette shipped with Songbird (songbird-yaml-schema examples/valid/objects/palette.yaml).
+# The hex values are fixed (R-055.1, DM-33); the comment says what a colour means in a given network.
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Color"
+metadata: { name: "green", comment: "Backup / Veeam" }
+spec: { hex: "#2E7D32", predefined: true }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Color"
+metadata: { name: "blue", comment: "Main LAN" }
+spec: { hex: "#1565C0", predefined: true }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Color"
+metadata: { name: "red", comment: "DMZ" }
+spec: { hex: "#C62828", predefined: true }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Color"
+metadata: { name: "orange", comment: "Untrusted / Internet" }
+spec: { hex: "#EF6C00", predefined: true }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Color"
+metadata: { name: "purple" }
+spec: { hex: "#6A1B9A", predefined: true }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Color"
+metadata: { name: "teal" }
+spec: { hex: "#00838F", predefined: true }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Color"
+metadata: { name: "grey", comment: "Default / unclassified" }
+spec: { hex: "#616161", predefined: true }

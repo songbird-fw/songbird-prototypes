@@ -306,3 +306,21 @@ pre.code .file { font-weight: 700; display: block; margin-top: 6px; }
   .split { grid-template-columns: 1fr; }
   .form-grid { grid-template-columns: 1fr; }
 }
+
+/* ---- v1alpha1 additions ---- */
+.chip.any { font-style: italic; color: var(--text-2); }
+.chip.group { border-style: dashed; }
+.chip.missing { border-color: var(--critical); color: var(--critical); }
+.vwarn { border-left: 3px solid var(--warning); background: var(--warning-soft); padding: 8px 12px; border-radius: 0 6px 6px 0; font-size: 13px; }
+.vwarn ul { margin: 4px 0 0; padding-left: 18px; }
+.verr + .vwarn { margin-top: 8px; }
+.vok { display: flex; align-items: center; gap: 8px; color: var(--text-2); font-size: 13px; }
+.vok .icon { color: var(--good); }
+.modal.wide { width: min(980px, calc(100vw - 32px)); max-width: none; }
+textarea.yaml-editor { width: 100%; min-height: 52vh; font-size: 12.5px; line-height: 1.5; tab-size: 2; white-space: pre; }
+a.button { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border: 1px solid var(--border-strong); border-radius: 6px;
+  background: var(--surface); color: var(--text); font-weight: 500; text-decoration: none; }
+a.button:hover { background: var(--surface-2); text-decoration: none; }
+a.pill { text-decoration: none; color: var(--text); }
+.legend.card { margin-bottom: 12px; }
+.nowrap { white-space: nowrap; }

@@ -1,0 +1,49 @@
+# Predefined Services shipped with Songbird (DM-21). v1alpha1 has no
+# 'predefined' field on Service, so the list lives here: the Validator
+# rejects a Service with one of these names whose protocols differ, and the
+# API refuses to delete them. Their metadata (comment, color, ...) is free.
+# http, https, dns and ping are identical to the schema examples.
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Service"
+metadata: { name: "http", category: "internet" }
+spec:
+  protocols:
+    - { protocol: "tcp", port: 80 }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Service"
+metadata: { name: "https", category: "internet" }
+spec:
+  protocols:
+    - { protocol: "tcp", port: 443 }
+    - { protocol: "udp", port: 443 }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Service"
+metadata: { name: "dns" }
+spec:
+  protocols:
+    - { protocol: "tcp", port: 53 }
+    - { protocol: "udp", port: 53 }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Service"
+metadata: { name: "ping" }
+spec:
+  protocols:
+    - { protocol: "icmp", icmpType: 8 }
+    - { protocol: "icmpv6", icmpType: 128 }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Service"
+metadata: { name: "ssh", category: "infra" }
+spec:
+  protocols:
+    - { protocol: "tcp", port: 22 }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Service"
+metadata: { name: "ntp", category: "infra" }
+spec:
+  protocols:
+    - { protocol: "udp", port: 123 }

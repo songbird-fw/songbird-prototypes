@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://config.songbird-fw.com/v1alpha1/dhcpserver.schema.json",
+  "title": "DhcpServer",
+  "description": "PoC PROPOSAL, not part of songbird-yaml-schema v1alpha1 (the schema README names a future 'DhcpServer' kind). It is the domain model's DhcpConfig (DM-24 ... DM-29, R-017.x) as a kind of its own, one per Interface, so that the Interface kind stays exactly as in v1alpha1.",
+  "x-songbird-status": "proposal",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["apiVersion", "kind", "metadata", "spec"],
+  "properties": {
+    "apiVersion": { "$ref": "common.schema.json#/$defs/apiVersion" },
+    "kind": { "const": "DhcpServer" },
+    "metadata": { "$ref": "common.schema.json#/$defs/metadata" },
+    "spec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["interface", "enabled", "rangeStart", "rangeEnd"],
+      "properties": {
+        "interface": { "description": "Interface served; at most one DhcpServer per Interface.", "$ref": "common.schema.json#/$defs/reference" },
+        "enabled": { "description": "Allows preconfiguring without activating.", "type": "boolean" },
+        "rangeStart": { "$ref": "common.schema.json#/$defs/ipv4Address" },
+        "rangeEnd": { "$ref": "common.schema.json#/$defs/ipv4Address" },
+        "gateway": { "description": "Default: the Interface address in the range's subnet.", "$ref": "common.schema.json#/$defs/ipv4Address" },
+        "dnsServers": { "description": "Default: the Interface address when the DNS server listens there.", "type": "array", "uniqueItems": true, "maxItems": 4, "items": { "$ref": "common.schema.json#/$defs/ipv4Address" } },
+        "leaseTime": { "description": "R-017.1.", "$ref": "common.schema.json#/$defs/duration", "default": "24h" },
+        "reservations": {
+          "description": "Static assignment by MAC (R-017.2).",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["mac", "ip"],
+            "properties": {
+              "mac": { "$ref": "common.schema.json#/$defs/macAddress" },
+              "ip": { "$ref": "common.schema.json#/$defs/ipv4Address" },
+              "host": { "$ref": "common.schema.json#/$defs/fqdnOrLabel" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

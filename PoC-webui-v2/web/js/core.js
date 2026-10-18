@@ -1,10 +1,13 @@
 // Core helpers: DOM builder, API client, shared state, modals, toasts, forms.
 // The UI holds no configuration of its own: it reads the tree from the API
 // and every save goes back as a whole object with If-Match (components.md).
+// Objects are songbird-yaml-schema v1alpha1 documents, unchanged.
+
+export const API_VERSION = 'config.songbird-fw.com/v1alpha1';
 
 export const state = {
   me: null,          // { u, r }
-  config: null,      // { revision, objects, activeRoutes, limits }
+  config: null,      // { revision, objects, findings, kinds, predefined, activeRoutes, limits }
   status: null,      // ReconcilerStatus
   counters: null,    // Event Collector counters
   listeners: new Set(),
@@ -12,6 +15,8 @@ export const state = {
 
 export const isAdmin = () => state.me && state.me.r === 'admin';
 export const objs = (kind) => (state.config?.objects?.[kind]) || [];
+export const find = (kind, name) => objs(kind).find((o) => o.metadata.name === name);
+export const sys = () => objs('System')[0]?.spec || {};
 
 export function emit() { for (const fn of state.listeners) fn(); }
 
@@ -44,7 +49,6 @@ export function mount(root, ...children) { root.replaceChildren(); append(root, 
 const ICONS = {
   shield: 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z',
   gauge: 'M12 14l4-4 M3.3 19a10 10 0 1 1 17.4 0',
-  list: 'M8 6h13 M8 12h13 M8 18h13 M3 6h.01 M3 12h.01 M3 18h.01',
   network: 'M9 2h6v6H9z M2 16h6v6H2z M16 16h6v6h-6z M12 8v4 M5 16v-4h14v4',
   box: 'M21 8l-9-5-9 5 9 5 9-5z M3 8v8l9 5 9-5V8 M12 13v8',
   activity: 'M22 12h-4l-3 9L9 3l-3 9H2',
@@ -71,9 +75,11 @@ const ICONS = {
   pause: 'M6 4h4v16H6z M14 4h4v16h-4z',
   play: 'M5 3l14 9-14 9z',
   undo: 'M3 7v6h6 M21 17a9 9 0 0 0-15-6.7L3 13',
-  eye: 'M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z',
   power: 'M18.4 6.6a9 9 0 1 1-12.8 0 M12 2v10',
   zap: 'M13 2L3 14h9l-1 8 10-12h-9z',
+  cog: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z',
+  download: 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M7 10l5 5 5-5 M12 15V3',
+  upload: 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M17 8l-5-5-5 5 M12 3v12',
 };
 
 export function icon(name, cls) {
@@ -110,36 +116,69 @@ export function fmtBps(n) {
   return `${n.toFixed(n < 10 && i ? 1 : 0)} ${u[i]}`;
 }
 
+// Address and Service values as the schema writes them.
+export function addrValue(spec) {
+  if (!spec) return '';
+  if (spec.subnet) return spec.subnet;
+  if (spec.range) return `${spec.range.start}-${spec.range.end}`;
+  return spec.fqdn || spec.mac || '';
+}
+export function addrForm(spec) {
+  return spec?.subnet ? 'subnet' : spec?.range ? 'range' : spec?.fqdn ? 'fqdn' : spec?.mac ? 'mac' : 'subnet';
+}
+export function protoEntry(p) {
+  if (p.port != null) return `${p.protocol}/${p.port}`;
+  if (p.icmpType != null) return `${p.protocol} type ${p.icmpType}${p.icmpCode != null ? ' code ' + p.icmpCode : ''}`;
+  if (p.protocolNumber != null) return `ip proto ${p.protocolNumber}`;
+  return p.protocol;
+}
+export const svcValue = (spec) => (spec?.protocols || []).map(protoEntry).join(', ');
+
 // ---- colours (R-055) -----------------------------------------------------------
+// metadata.color references a Color by name; what it stands for is the
+// Color's comment.
 
-export function colourValue(name) {
-  if (!name) return null;
-  return objs('Colour').find((c) => c.metadata.name === name)?.spec.value || null;
-}
-export function dot(colourName, title) {
-  const v = colourValue(colourName);
+export function colorHex(name) { return name ? find('Color', name)?.spec.hex || null : null; }
+export function dot(colorName, title) {
+  const v = colorHex(colorName);
   if (!v) return null;
-  const c = objs('Colour').find((x) => x.metadata.name === colourName);
-  return h('span', { class: 'dot', style: { background: v }, title: title || `${colourName}${c?.spec.meaning ? ' — ' + c.spec.meaning : ''}` });
+  const c = find('Color', colorName);
+  return h('span', { class: 'dot', style: { background: v }, title: title || `${colorName}${c?.metadata.comment ? ' — ' + c.metadata.comment : ''}` });
+}
+export function colorOptions() {
+  return [{ value: '', label: '— none —' }, ...objs('Color').map((c) => ({ value: c.metadata.name, label: `${c.metadata.name}${c.metadata.comment ? ' — ' + c.metadata.comment : ''}` }))];
 }
 
-// Display a reference (Address, group, VIP, derived, Service...) as a chip.
+// Display a reference (Address, group, Service, "any") as a chip.
 export function refChip(name, onRemove) {
-  let cls = 'chip', colour = null, title = name;
-  const find = (k) => objs(k).find((o) => o.metadata.name === name);
-  if (name.endsWith(' addresses')) { cls += ' derived'; title = 'Derived: the subnets of the Interface (follows IP changes)'; colour = objs('Interface').find((i) => i.metadata.name + ' addresses' === name)?.metadata.colour; }
+  let cls = 'chip', color = null, title = name;
+  if (name === 'any') { cls += ' any'; title = 'any (the schema keyword ["any"])'; }
   else {
-    const o = find('Address') || find('AddressGroup') || find('VirtualIP') || find('Service') || find('ServiceGroup');
+    const o = find('Address', name) || find('AddressGroup', name) || find('Service', name) || find('ServiceGroup', name) || find('Interface', name) || find('Zone', name);
     if (o) {
-      colour = o.metadata.colour;
-      if (o.kind === 'VirtualIP') { cls += ' vip'; title = `VIP ${o.spec.external.ip}:${o.spec.external.port} → ${o.spec.mapped.ip}:${o.spec.mapped.port}`; }
-      else if (o.kind === 'Address') title = `${o.spec.type} ${o.spec.value}`;
-      else if (o.kind === 'AddressGroup' || o.kind === 'ServiceGroup') title = `group: ${o.spec.members.join(', ')}`;
-      else if (o.kind === 'Service') title = o.spec.protocol + (o.spec.ports ? '/' + o.spec.ports : '');
+      color = o.metadata.color;
+      if (o.kind === 'Address') title = `${addrForm(o.spec)} ${addrValue(o.spec)}${o.spec.interface ? ' · bound to ' + o.spec.interface : ''}`;
+      else if (o.kind === 'AddressGroup' || o.kind === 'ServiceGroup') { title = `group: ${o.spec.members.join(', ')}`; cls += ' group'; }
+      else if (o.kind === 'Service') title = svcValue(o.spec);
+      else if (o.kind === 'Zone') { title = `Zone: ${o.spec.interfaces.join(', ')}`; cls += ' group'; }
+      if (o.metadata.comment) title += `\n${o.metadata.comment}`;
     } else { title = 'missing object'; cls += ' missing'; }
   }
-  return h('span', { class: cls, title }, dot(colour), name,
-    onRemove && h('button', { type: 'button', title: 'Remove', onclick: onRemove }, '×'));
+  return h('span', { class: cls, title }, dot(color), name,
+    onRemove && h('button', { type: 'button', title: 'Remove', 'aria-label': `Remove ${name}`, onclick: onRemove }, '×'));
+}
+
+// ---- findings of the Validator ---------------------------------------------------
+
+export const findings = () => state.config?.findings || [];
+export const filePath = (kind, name) => `${(state.config?.kinds || []).find((k) => k.name === kind)?.dir || kind}/${name}.yaml`;
+export function findingsFor(kind, name) { const f = filePath(kind, name); return findings().filter((e) => e.file === f); }
+
+export function findingBadge(kind, name) {
+  const l = findingsFor(kind, name);
+  if (!l.length) return null;
+  const errs = l.filter((e) => e.severity === 'error').length;
+  return h('span', { class: ['badge', errs ? 'bad' : 'warn'], title: l.map((e) => `${e.path}: ${e.reason}`).join('\n') }, errs ? `${errs} error${errs > 1 ? 's' : ''}` : `${l.length} warning${l.length > 1 ? 's' : ''}`);
 }
 
 // ---- API ---------------------------------------------------------------------------
@@ -150,9 +189,13 @@ export class ApiError extends Error {
 
 export async function api(method, path, body, opts = {}) {
   const headers = { 'X-Requested-With': 'songbird' };
-  if (body !== undefined) headers['Content-Type'] = 'application/json';
+  let payload;
+  if (body !== undefined) {
+    if (opts.yaml) { headers['Content-Type'] = 'application/yaml'; payload = body; }
+    else { headers['Content-Type'] = 'application/json'; payload = JSON.stringify(body); }
+  }
   if (opts.rev) headers['If-Match'] = `"${opts.rev}"`;
-  const res = await fetch(path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body), credentials: 'same-origin' });
+  const res = await fetch(path, { method, headers, body: payload, credentials: 'same-origin' });
   const ct = res.headers.get('Content-Type') || '';
   const data = ct.includes('json') ? await res.json() : await res.text();
   if (res.status === 401 && !path.endsWith('/login')) { state.me = null; location.hash = '#/login'; }
@@ -167,18 +210,19 @@ export async function loadConfig() {
 
 // save sends a write with the revision the user edited and reports the
 // outcome of the reconciliation: "saved and applied" or "saved, not applied".
-export async function save(method, path, body) {
+export async function save(method, path, body, opts = {}) {
   try {
-    const r = await api(method, path, body, { rev: state.config.revision });
-    if (r.applied) toast('Saved and applied', `commit ${short(r.commit)}`, 'good');
-    else if (r.pending) toast('Saved, apply in progress', `commit ${short(r.commit)}`, 'warn');
+    const r = await api(method, path, body, { ...opts, rev: state.config.revision });
+    const warn = r.warnings?.length ? ` · ${r.warnings.length} warning${r.warnings.length > 1 ? 's' : ''}: ${r.warnings[0].reason}` : '';
+    if (r.applied) toast('Saved and applied', `commit ${short(r.commit)}${warn}`, r.warnings?.length ? 'warn' : 'good');
+    else if (r.pending) toast('Saved, apply in progress', `commit ${short(r.commit)}${warn}`, 'warn');
     else toast('Saved, not applied', r.attempt?.error?.message || r.attempt?.result, 'bad', '#/diagnostics');
     await loadConfig();
     return { ok: true, result: r };
   } catch (e) {
     if (!(e instanceof ApiError)) throw e;
     if (e.status === 409 && e.data.conflict) {
-      toast('Conflict', `${e.data.conflict.file} was changed by someone else. The form now shows nothing new: close it and edit again on the current revision.`, 'bad');
+      toast('Conflict', `${e.data.conflict.file} was changed by someone else since you opened it. Close the form and edit again on the current revision.`, 'bad');
       await loadConfig();
     } else if (e.status !== 422) {
       toast('Not saved', e.message, 'bad');
@@ -195,14 +239,14 @@ export function toast(title, text, kind = '', href) {
   const t = h('div', { class: ['toast', kind] }, h('div', { style: { fontWeight: 600 } }, title), text && h('div', { class: 'sub' }, text),
     href && h('a', { href, class: 'small' }, 'Details'));
   box.append(t);
-  setTimeout(() => t.remove(), kind === 'bad' ? 9000 : 4500);
+  setTimeout(() => t.remove(), kind === 'bad' ? 9000 : 5000);
 }
 
-export function modal({ title, body, foot, narrow, onClose }) {
+export function modal({ title, body, foot, narrow, wide, onClose }) {
   const close = () => { ov.remove(); document.removeEventListener('keydown', esc); onClose && onClose(); };
   const esc = (e) => { if (e.key === 'Escape') close(); };
   const ov = h('div', { class: 'overlay', onmousedown: (e) => { if (e.target === ov) close(); } },
-    h('div', { class: ['modal', narrow && 'narrow'], role: 'dialog', 'aria-modal': 'true', 'aria-label': title },
+    h('div', { class: ['modal', narrow && 'narrow', wide && 'wide'], role: 'dialog', 'aria-modal': 'true', 'aria-label': title },
       h('div', { class: 'head' }, h('h2', null, title), h('span', { class: 'spacer' }), h('button', { class: 'ghost', onclick: close, 'aria-label': 'Close' }, icon('x'))),
       h('div', { class: 'body' }, body),
       foot && h('div', { class: 'foot' }, foot(close))));
@@ -215,45 +259,102 @@ export function modal({ title, body, foot, narrow, onClose }) {
 export function confirmDialog(title, text, okLabel = 'Confirm', danger = false) {
   return new Promise((resolve) => {
     let done = false;
-    const close = modal({
+    modal({
       title, narrow: true, body: h('p', { style: { margin: 0 } }, text),
       onClose: () => { if (!done) resolve(false); },
       foot: (c) => [h('span', { class: 'spacer' }), h('button', { onclick: c }, 'Cancel'),
         h('button', { class: danger ? 'primary danger-bg' : 'primary', onclick: () => { done = true; resolve(true); c(); } }, okLabel)],
     });
-    void close;
   });
 }
 
 export function showYAML(kind, name, rev) {
   const pre = h('pre', { class: 'code' }, 'Loading…');
-  modal({ title: `${kind}/${name}`, body: [h('div', { class: 'sub small' }, 'The file in the configuration repository — the single source of truth (ADR-0001).'), pre] });
+  modal({ title: `${kind}/${name}`, body: [h('div', { class: 'sub small' }, 'The file in the configuration repository — the single source of truth (ADR-0001), in the canonical form of the schema (every string double-quoted).'), pre] });
   api('GET', `/api/v1/objects/${kind}/${encodeURIComponent(name)}/yaml${rev ? '?rev=' + rev : ''}`)
-    .then((t) => { pre.textContent = `# ${kind.toLowerCase()}s/${name}.yaml\n` + t; })
+    .then((t) => { pre.textContent = `# ${filePath(kind, name)}\n` + t; })
     .catch((e) => { pre.textContent = e.message; });
 }
 
-export function validationBox(errs, msg) {
-  if (!errs?.length && !msg) return null;
-  return h('div', { class: 'verr', role: 'alert' }, h('strong', null, msg || 'The change is not valid'),
-    errs?.length ? h('ul', null, errs.map((e) => h('li', null, h('code', null, `${e.file}`), ' ', h('code', null, e.path), ' — ', e.reason,
-      e.constraint && h('span', { class: 'muted' }, ` (${e.constraint})`)))) : null);
+function where(e) { return `${e.file}${e.line ? ':' + e.line : ''}`; }
+
+export function validationBox(errs, msg, warnings) {
+  const out = [];
+  if (errs?.length || msg) {
+    out.push(h('div', { class: 'verr', role: 'alert' }, h('strong', null, msg || 'The change is not valid'),
+      errs?.length ? h('ul', null, errs.map((e) => h('li', null, h('code', null, where(e)), ' ', e.path && h('code', null, e.path), ' — ', e.reason,
+        h('span', { class: 'muted' }, ` (${[e.rule, e.constraint].filter(Boolean).join(', ')})`)))) : null));
+  }
+  if (warnings?.length) {
+    out.push(h('div', { class: 'vwarn' }, h('strong', null, `${warnings.length} warning${warnings.length > 1 ? 's' : ''} (saving is allowed)`),
+      h('ul', null, warnings.map((e) => h('li', null, e.path && h('code', null, e.path), ' — ', e.reason, h('span', { class: 'muted' }, ` (${[e.rule, e.constraint].filter(Boolean).join(', ')})`))))));
+  }
+  return out.length ? out : null;
+}
+
+// ---- YAML editor -------------------------------------------------------------------------------
+// Edits the file itself. The server checks it against the schema and the
+// Validator on every keystroke (dry run), and reports file:line and path.
+
+export function yamlEditor(kind, name, { isNew = false, template = '' } = {}) {
+  const ta = h('textarea', { class: 'yaml-editor', spellcheck: 'false', disabled: !isAdmin(), 'aria-label': 'YAML' }, isNew ? template : 'Loading…');
+  const errBox = h('div');
+  const saveBtn = h('button', { class: 'primary', disabled: true, onclick: () => submit() }, 'Save');
+  let t;
+  const nameOf = () => (ta.value.match(/^\s*name:\s*"?([a-z0-9._-]+)"?/m) || [])[1] || name;
+  async function dry() {
+    if (!isAdmin()) return;
+    const n = nameOf();
+    try {
+      const r = await api('POST', `/api/v1/validate/${kind}/${encodeURIComponent(n)}${isNew ? '?create=1' : ''}`, ta.value, { yaml: true });
+      mount(errBox, r.valid ? validationBox(null, null, r.warnings) || h('div', { class: 'vok' }, icon('check'), 'Valid against the schema and the Validator') : validationBox(r.validation, r.error, r.warnings));
+      saveBtn.disabled = !r.valid;
+    } catch (e) { mount(errBox, validationBox(null, e.message)); saveBtn.disabled = true; }
+  }
+  ta.addEventListener('input', () => { clearTimeout(t); t = setTimeout(dry, 400); });
+  ta.addEventListener('keydown', (e) => { if (e.key === 'Tab') { e.preventDefault(); ta.setRangeText('  ', ta.selectionStart, ta.selectionEnd, 'end'); } });
+  async function submit() {
+    saveBtn.disabled = true;
+    const r = await save('PUT', `/api/v1/objects/${kind}/${encodeURIComponent(nameOf())}${isNew ? '?create=1' : ''}`, ta.value, { yaml: true });
+    if (r.ok) return close();
+    if (r.error.status === 422) mount(errBox, validationBox(r.error.data.validation, r.error.data.error, r.error.data.warnings));
+    else if (r.error.status === 409) close();
+  }
+  const close = modal({
+    title: isNew ? `New ${kind} (YAML)` : `${filePath(kind, name)}`, wide: true,
+    body: [h('div', { class: 'sub small' }, 'Edit the file directly. ', h('a', { href: `/api/v1/schema/${kind.toLowerCase()}.schema.json`, target: '_blank' }, `${kind.toLowerCase()}.schema.json`),
+      ' (v1alpha1) is checked first, then the semantic rules. Renaming is not supported.'), errBox, ta],
+    foot: (c) => [h('span', { class: 'spacer' }), !isAdmin() && h('span', { class: 'muted small' }, 'read-only Role'), h('button', { onclick: c }, 'Cancel'), saveBtn],
+  });
+  if (!isNew) api('GET', `/api/v1/objects/${kind}/${encodeURIComponent(name)}/yaml`).then((y) => { ta.value = y; dry(); }).catch((e) => { ta.value = e.message; });
+  else dry();
+  return close;
 }
 
 // ---- generic object form ----------------------------------------------------------------------
-// fields: [{ key: 'spec.type', label, type: text|number|select|multi|checkbox|textarea|colour,
-//           options: [..] | () => [..], required, help, show: (o) => bool, full, parse, format }]
+// fields: [{ key: 'spec.x', label, type: text|number|select|multi|checks|checkbox|textarea|color,
+//           options: [..] | (draft) => [..], required, help, show: (draft) => bool, full,
+//           parse, format, immutable, lockedIf, rerender, paths: [server paths shown on this field], exact }]
+// toObject(draft) turns the form state into the API object (e.g. an Address
+// form edits "form" + "value" and produces exactly one of subnet/range/...).
 
 export function getPath(o, p) { return p.split('.').reduce((a, k) => (a == null ? undefined : a[k]), o); }
 export function setPath(o, p, v) {
   const ks = p.split('.'); let cur = o;
   for (const k of ks.slice(0, -1)) { if (cur[k] == null || typeof cur[k] !== 'object') cur[k] = {}; cur = cur[k]; }
   const last = ks[ks.length - 1];
-  if (v === undefined || v === '' || (Array.isArray(v) && v.length === 0 && !cur.__keepEmpty)) delete cur[last]; else cur[last] = v;
+  if (v === undefined || v === '' || (Array.isArray(v) && v.length === 0)) delete cur[last]; else cur[last] = v;
 }
-
-export function colourOptions() {
-  return [{ value: '', label: '— none —' }, ...objs('Colour').map((c) => ({ value: c.metadata.name, label: `${c.metadata.name}${c.spec.meaning ? ' — ' + c.spec.meaning : ''}` }))];
+// prune removes empty objects left behind by cleared fields.
+export function prune(o) {
+  if (Array.isArray(o)) return o.map(prune);
+  if (o && typeof o === 'object') {
+    for (const [k, v] of Object.entries(o)) {
+      const p = prune(v);
+      if (p && typeof p === 'object' && !Array.isArray(p) && Object.keys(p).length === 0 && k !== 'spec') delete o[k]; else o[k] = p;
+    }
+  }
+  return o;
 }
 
 function opts(f, o) {
@@ -261,14 +362,20 @@ function opts(f, o) {
   return raw.map((x) => (typeof x === 'string' ? { value: x, label: x } : x));
 }
 
-// multiPicker: chips + "add" select, used for Policy sources/destinations/services.
-export function multiPicker(values, options, onChange, placeholder = 'add…') {
+// multiPicker: chips + "add" select, used for sources/destinations/services/members.
+// With anyOption, "any" is exclusive: it replaces the list ( ["any"] ).
+export function multiPicker(values, options, onChange, placeholder = 'add…', anyOption = false) {
   const box = h('div', { class: 'chips' });
   const render = () => {
     box.replaceChildren();
     values.forEach((v, i) => box.append(refChip(v, () => { values.splice(i, 1); onChange(values); render(); })));
-    const sel = h('select', { 'aria-label': placeholder, onchange: () => { if (sel.value) { values.push(sel.value); onChange(values); render(); } } },
-      h('option', { value: '' }, values.length ? '+ add' : placeholder));
+    if (values[0] === 'any') return;
+    const sel = h('select', { 'aria-label': placeholder, onchange: () => {
+      if (!sel.value) return;
+      if (sel.value === 'any') values.splice(0, values.length, 'any'); else values.push(sel.value);
+      onChange(values); render();
+    } }, h('option', { value: '' }, values.length ? '+ add' : placeholder));
+    if (anyOption && !values.length) sel.append(h('option', { value: 'any' }, 'any'));
     const groups = {};
     for (const o of options) if (!values.includes(o.value)) (groups[o.group || ''] ||= []).push(o);
     for (const [g, list] of Object.entries(groups)) {
@@ -284,29 +391,26 @@ export function multiPicker(values, options, onChange, placeholder = 'add…') {
 
 // objectForm renders a form for one object and handles dry-run validation,
 // required fields (R-009.1) and saving.
-export function objectForm({ kind, obj, isNew, fields, title, onSaved, extra }) {
+export function objectForm({ kind, obj, isNew, fields, title, onSaved, extra, toObject = (d) => d, intro }) {
   const draft = structuredClone(obj);
-  let serverErrs = [], serverMsg = '';
+  let serverErrs = [], serverMsg = '', serverWarn = [];
   const body = h('div', { class: 'stack' });
   const saveBtn = h('button', { class: 'primary', onclick: () => submit() }, isNew ? 'Create' : 'Save');
   const readOnly = !isAdmin();
 
-  const missing = () => fields.filter((f) => f.required && (!f.show || f.show(draft)) && isEmpty(getPath(draft, f.key)));
   const isEmpty = (v) => v == null || v === '' || (Array.isArray(v) && v.length === 0);
+  const missing = () => fields.filter((f) => f.required && (!f.show || f.show(draft)) && isEmpty(getPath(draft, f.key)));
+  const payload = () => prune(toObject(structuredClone(draft)));
 
   let timer;
-  const changed = () => {
-    renderErrors();
-    clearTimeout(timer);
-    timer = setTimeout(dryRun, 350);
-  };
+  const changed = () => { renderErrors(); clearTimeout(timer); timer = setTimeout(dryRun, 350); };
 
   async function dryRun() {
     const name = draft.metadata?.name;
-    if (!name || readOnly) return;
+    if (!name || readOnly || missing().length) return;
     try {
-      const r = await api('POST', `/api/v1/validate/${kind}/${encodeURIComponent(name)}${isNew ? '?create=1' : ''}`, draft);
-      serverErrs = r.valid ? [] : (r.validation || []); serverMsg = r.valid ? '' : r.error;
+      const r = await api('POST', `/api/v1/validate/${kind}/${encodeURIComponent(name)}${isNew ? '?create=1' : ''}`, payload());
+      serverErrs = r.valid ? [] : (r.validation || []); serverMsg = r.valid ? '' : r.error; serverWarn = r.warnings || [];
     } catch { /* ignore */ }
     renderErrors();
   }
@@ -315,13 +419,16 @@ export function objectForm({ kind, obj, isNew, fields, title, onSaved, extra }) 
   const errBox = h('div');
   function renderErrors() {
     const miss = new Set(missing().map((f) => f.key));
-    for (const [key, el] of fieldEls) {
-      const own = serverErrs.filter((e) => e.path === key || e.path.startsWith(key + '[') || e.path.startsWith(key + '.'));
-      el.classList.toggle('invalid', miss.has(key) || own.length > 0);
-      const msg = el.querySelector('.err');
-      msg.textContent = miss.has(key) ? 'Required' : own.map((e) => e.reason).join('; ');
+    const claimed = new Set();
+    for (const [f, el] of fieldEls) {
+      const keys = f.paths || [f.key];
+      const own = serverErrs.filter((e) => keys.some((k) => e.path === k || (!f.exact && (e.path.startsWith(k + '[') || e.path.startsWith(k + '.')))));
+      own.forEach((e) => claimed.add(e));
+      el.classList.toggle('invalid', miss.has(f.key) || own.length > 0);
+      el.querySelector('.err').textContent = miss.has(f.key) ? 'Required' : own.map((e) => e.reason).join('; ');
     }
-    mount(errBox, validationBox(serverErrs, serverErrs.length ? serverMsg : (serverMsg || null)));
+    const rest = serverErrs.filter((e) => !claimed.has(e));
+    mount(errBox, validationBox(rest, rest.length || (serverMsg && !serverErrs.length) ? serverMsg : null, serverWarn));
     saveBtn.disabled = readOnly || miss.size > 0 || serverErrs.length > 0;
     saveBtn.title = miss.size ? 'Fill in the required fields' : '';
   }
@@ -342,17 +449,17 @@ export function objectForm({ kind, obj, isNew, fields, title, onSaved, extra }) 
           break;
         case 'multi': {
           const vals = [...(cur || [])];
-          input = disabled ? h('div', { class: 'chips' }, vals.map((v) => refChip(v))) : multiPicker(vals, opts(f, draft), (v) => set([...v]));
+          input = disabled ? h('div', { class: 'chips' }, vals.map((v) => refChip(v))) : multiPicker(vals, opts(f, draft), (v) => set([...v]), f.placeholder, f.any);
           break;
         }
         case 'checks': {
           const vals = new Set(cur || []);
-          input = h('div', { class: 'row wrap' }, opts(f, draft).map((o) => h('label', { class: 'check' },
+          input = h('div', { class: 'row wrap' }, opts(f, draft).map((o) => h('label', { class: 'check', title: o.title },
             h('input', { type: 'checkbox', disabled, checked: vals.has(o.value), onchange: (e) => { e.target.checked ? vals.add(o.value) : vals.delete(o.value); set(opts(f, draft).map((x) => x.value).filter((x) => vals.has(x))); } }), o.label)));
           break;
         }
         case 'checkbox':
-          input = h('label', { class: 'check' }, h('input', { type: 'checkbox', disabled, checked: !!cur, onchange: (e) => set(e.target.checked) }), f.checkLabel || 'Enabled');
+          input = h('label', { class: 'check' }, h('input', { type: 'checkbox', disabled, checked: f.invert ? cur !== false : !!cur, onchange: (e) => set(f.invert ? (e.target.checked ? undefined : false) : e.target.checked) }), f.checkLabel || 'Enabled');
           break;
         case 'textarea':
           input = h('textarea', { disabled, placeholder: f.placeholder, oninput: (e) => set(e.target.value) }, f.format ? f.format(cur) : (cur ?? ''));
@@ -360,41 +467,43 @@ export function objectForm({ kind, obj, isNew, fields, title, onSaved, extra }) 
         case 'number':
           input = h('input', { type: 'number', disabled, value: cur ?? '', placeholder: f.placeholder, oninput: (e) => set(e.target.value === '' ? undefined : Number(e.target.value)) });
           break;
-        case 'colour':
+        case 'color': {
+          let txt;
           input = h('div', { class: 'row' }, h('input', { type: 'color', disabled, value: cur || '#888888', style: { width: '48px', padding: '2px' }, oninput: (e) => { set(e.target.value.toUpperCase()); txt.value = e.target.value.toUpperCase(); } }),
-            (txt = h('input', { disabled, value: cur || '', placeholder: '#49F527', oninput: (e) => set(e.target.value) })));
+            (txt = h('input', { disabled, value: cur || '', placeholder: '#2E7D32', oninput: (e) => set(e.target.value) })));
           break;
+        }
         default:
           input = h('input', { disabled, value: f.format ? f.format(cur) : (cur ?? ''), placeholder: f.placeholder, autocomplete: 'off', oninput: (e) => set(e.target.value) });
       }
       const el = h('div', { class: ['field', (f.full || f.type === 'multi' || f.type === 'textarea') && 'full'] },
         h('label', null, f.label, f.required && h('span', { class: 'req' }, ' *')), input,
         f.help && h('div', { class: 'help' }, typeof f.help === 'function' ? f.help(draft) : f.help), h('div', { class: 'err' }));
-      fieldEls.set(f.key, el);
+      fieldEls.set(f, el);
       grid.append(el);
     }
     renderErrors();
   }
-  let txt;
 
   async function submit() {
     if (missing().length) return renderErrors();
     saveBtn.disabled = true; saveBtn.textContent = 'Saving…';
     const name = draft.metadata.name;
-    const r = await save('PUT', `/api/v1/objects/${kind}/${encodeURIComponent(name)}${isNew ? '?create=1' : ''}`, draft);
+    const r = await save('PUT', `/api/v1/objects/${kind}/${encodeURIComponent(name)}${isNew ? '?create=1' : ''}`, payload());
     saveBtn.textContent = isNew ? 'Create' : 'Save';
     if (r.ok) { close(); onSaved && onSaved(); return; }
-    if (r.error.status === 422) { serverErrs = r.error.data.validation || []; serverMsg = r.error.data.error; }
+    if (r.error.status === 422) { serverErrs = r.error.data.validation || []; serverMsg = r.error.data.error; serverWarn = r.error.data.warnings || []; }
     else if (r.error.status === 409) { close(); return; }
     renderErrors();
   }
 
   renderFields();
-  body.append(errBox, grid, extra ? extra(draft, changed) : null);
+  append(body, [intro, errBox, grid, extra ? extra(draft, changed) : null]); // skips null/false
   const close = modal({
     title: title || (isNew ? `New ${kind}` : `${kind} ${obj.metadata.name}`), body,
     foot: (c) => [
       !isNew && h('button', { class: 'ghost', onclick: () => showYAML(kind, obj.metadata.name) }, icon('code'), 'YAML'),
+      !isNew && isAdmin() && h('button', { class: 'ghost', onclick: () => { c(); yamlEditor(kind, obj.metadata.name); } }, icon('edit'), 'Edit YAML'),
       h('span', { class: 'spacer' }),
       readOnly && h('span', { class: 'muted small' }, 'read-only Role'),
       h('button', { onclick: c }, 'Cancel'), saveBtn],
@@ -404,23 +513,50 @@ export function objectForm({ kind, obj, isNew, fields, title, onSaved, extra }) 
 }
 
 export async function deleteObject(kind, name) {
-  if (!(await confirmDialog(`Delete ${kind} ${name}?`, 'This creates a commit that removes the file. You can revert it from Changes.', 'Delete', true))) return;
+  const refs = usedBy(kind, name);
+  const text = refs.length
+    ? `It is referenced by ${refs.slice(0, 5).join(', ')}${refs.length > 5 ? '…' : ''}: the Validator will refuse the deletion (DM-02).`
+    : 'This creates a commit that removes the file. You can revert it from Changes.';
+  if (!(await confirmDialog(`Delete ${kind} ${name}?`, text, 'Delete', true))) return;
   const r = await save('DELETE', `/api/v1/objects/${kind}/${encodeURIComponent(name)}`);
   if (!r.ok && r.error.status === 422) {
     modal({ title: 'Cannot delete', narrow: true, body: validationBox(r.error.data.validation, r.error.data.error) });
   }
 }
 
-// References to an object from Policies and groups (helps before deleting).
-export function usedBy(name) {
+// References to an object (helps before deleting, and in the lists).
+export function usedBy(kind, name) {
   const out = [];
-  for (const z of objs('Zone')) for (const p of z.spec.policies || [])
-    if ([...p.sources, ...p.destinations, ...p.services].includes(name)) out.push(`${z.metadata.name}/${p.name}`);
-  for (const g of [...objs('AddressGroup'), ...objs('ServiceGroup')]) if (g.spec.members.includes(name)) out.push(g.metadata.name);
-  for (const z of objs('Zone')) for (const p of z.spec.policies || []) if (p.nat?.pool === name) out.push(`${z.metadata.name}/${p.name}`);
+  const rsName = (rs, r) => `${rs.metadata.name}/${r.name}`;
+  const addr = ['Address', 'AddressGroup'].includes(kind), svc = ['Service', 'ServiceGroup'].includes(kind), net = ['Interface', 'Zone'].includes(kind);
+  for (const rs of objs('RuleSet')) {
+    if (net && (rs.spec.from === name || rs.spec.to === name)) out.push(rs.metadata.name);
+    for (const r of rs.spec.rules || []) {
+      if (addr && ([...r.source, ...r.destination].includes(name) || r.nat?.translateIpTo === name)) out.push(rsName(rs, r));
+      if (svc && (r.service.includes(name) || r.nat?.translateServiceTo === name)) out.push(rsName(rs, r));
+    }
+  }
+  if (addr) for (const g of objs('AddressGroup')) if (g.spec.members.includes(name)) out.push(g.metadata.name);
+  if (svc) for (const g of objs('ServiceGroup')) if (g.spec.members.includes(name)) out.push(g.metadata.name);
+  if (addr && (sys().admin?.trustedHosts || []).includes(name)) out.push('System (trustedHosts)');
+  if (kind === 'Interface') {
+    for (const z of objs('Zone')) if (z.spec.interfaces.includes(name)) out.push(`Zone ${z.metadata.name}`);
+    for (const i of objs('Interface')) if (i.spec.parent === name) out.push(`VLAN ${i.metadata.name}`);
+    for (const a of objs('Address')) if (a.spec.interface === name) out.push(a.metadata.name);
+    for (const r of objs('StaticRoute')) if (r.spec.interface === name) out.push(`route ${r.metadata.name}`);
+    for (const d of objs('DhcpServer')) if (d.spec.interface === name) out.push(`DHCP ${d.metadata.name}`);
+  }
+  if (kind === 'Color') for (const k of Object.keys(state.config?.objects || {})) for (const o of objs(k)) if (o.metadata.color === name) out.push(`${k} ${o.metadata.name}`);
   return out;
 }
 
-export function newObject(kind, spec) {
-  return { apiVersion: 'songbird.io/v1alpha1', kind, metadata: { name: '' }, spec };
+export function newObject(kind, spec, meta = {}) {
+  return { apiVersion: API_VERSION, kind, metadata: { name: '', ...meta }, spec };
 }
+
+// Common metadata fields of every kind (common.schema.json#/$defs/metadata).
+export const metaFields = ({ color = true, placeholder } = {}) => [
+  { key: 'metadata.name', label: 'Name', required: true, immutable: true, placeholder, help: 'Lowercase letters, digits, ".", "_", "-"; "any", "all", "none" are reserved' },
+  color && { key: 'metadata.color', label: 'Color', type: 'select', options: colorOptions, help: 'A classification from the palette (R-055)' },
+  { key: 'metadata.comment', label: 'Comment', full: true, placeholder: 'What this is for' },
+].filter(Boolean);

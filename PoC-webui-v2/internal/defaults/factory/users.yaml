@@ -1,0 +1,10 @@
+# PoC extension kind. Demo accounts: admin / songbird, auditor / auditor (bcrypt, cost 12).
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "User"
+metadata: { name: "admin" }
+spec: { role: "admin", passwordHash: "$2a$12$d9yb37arlKttCCMl83PwBuRwnFniSCH.hCJRWdOuo3sKmLsK7.oWe" }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "User"
+metadata: { name: "auditor" }
+spec: { role: "read-only", passwordHash: "$2a$12$F3UQdsVNb2RjGtSLHiTBW.jvhHsHzYgOUo7q8CK4cJ3aOKd26CgfS" }

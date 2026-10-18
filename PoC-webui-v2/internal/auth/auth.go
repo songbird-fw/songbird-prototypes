@@ -18,11 +18,21 @@ import (
 	m "github.com/songbird-fw/songbird-prototypes/PoC-webui-v2/internal/model"
 )
 
-const (
-	SessionTTL  = 8 * time.Hour    // R-043.5
-	MaxFailures = 5                // R-043.2
-	LockoutFor  = 10 * time.Minute // R-043.2
-)
+// Policy is what Auth reads from the configuration: the Users and the
+// System.admin settings (sessionTimeout R-043.4/R-043.5, lockout R-043.2).
+type Policy struct {
+	Users          m.List[m.UserSpec]
+	SessionTimeout time.Duration
+	MaxFailures    int
+	LockoutFor     time.Duration
+}
+
+// PolicyOf extracts the Auth policy from a configuration tree.
+func PolicyOf(t *m.Tree) Policy {
+	sys := t.Sys()
+	n, d := sys.LockoutPolicy()
+	return Policy{Users: t.Users, SessionTimeout: sys.SessionTimeout(), MaxFailures: n, LockoutFor: d}
+}
 
 var (
 	ErrLocked  = errors.New("too many failed attempts from this address, retry later")
@@ -45,19 +55,20 @@ type Auth struct {
 	mu    sync.Mutex
 	fails map[string]*failures
 	dummy string // hash compared for unknown users, so timing does not reveal them
-	Users func() m.List[m.UserSpec]
+	Conf  func() Policy
 }
 
-func New(users func() m.List[m.UserSpec]) *Auth {
+func New(conf func() Policy) *Auth {
 	k := make([]byte, 32)
 	_, _ = rand.Read(k)
 	d, _ := bcrypt.GenerateFromPassword(k[:16], 12)
-	return &Auth{key: k, fails: map[string]*failures{}, dummy: string(d), Users: users}
+	return &Auth{key: k, fails: map[string]*failures{}, dummy: string(d), Conf: conf}
 }
 
 // Login checks credentials; the bool reports whether this attempt caused a
 // lockout (so the caller can audit it).
 func (a *Auth) Login(user, pass, source string) (string, Session, bool, error) {
+	conf := a.Conf()
 	a.mu.Lock()
 	f := a.fails[source]
 	if f != nil && time.Now().Before(f.until) {
@@ -67,7 +78,7 @@ func (a *Auth) Login(user, pass, source string) (string, Session, bool, error) {
 	a.mu.Unlock()
 
 	var found *m.User
-	for _, u := range a.Users() {
+	for _, u := range conf.Users {
 		if u.Metadata.Name == user {
 			found = &u
 			break
@@ -86,8 +97,8 @@ func (a *Auth) Login(user, pass, source string) (string, Session, bool, error) {
 			a.fails[source] = f
 		}
 		f.n++
-		if f.n >= MaxFailures {
-			f.until = time.Now().Add(LockoutFor)
+		if f.n >= conf.MaxFailures {
+			f.until = time.Now().Add(conf.LockoutFor)
 			f.n = 0
 			return "", Session{}, true, ErrInvalid
 		}
@@ -96,7 +107,7 @@ func (a *Auth) Login(user, pass, source string) (string, Session, bool, error) {
 	a.mu.Lock()
 	delete(a.fails, source)
 	a.mu.Unlock()
-	s := Session{User: user, Role: found.Spec.Role, Exp: time.Now().Add(SessionTTL).Unix()}
+	s := Session{User: user, Role: found.Spec.Role, Exp: time.Now().Add(conf.SessionTimeout).Unix()}
 	return a.sign(s), s, false, nil
 }
 
@@ -129,7 +140,7 @@ func (a *Auth) Verify(token string) (Session, bool) {
 	if json.Unmarshal(b, &s) != nil || time.Now().Unix() > s.Exp {
 		return Session{}, false
 	}
-	for _, u := range a.Users() {
+	for _, u := range a.Conf().Users {
 		if u.Metadata.Name == s.User {
 			s.Role = u.Spec.Role
 			return s, true

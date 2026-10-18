@@ -1,0 +1,14 @@
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Interface"
+metadata: {name: lan}
+spec: {type: physical, device: eth0}
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Zone"
+metadata: {name: z1}
+spec: {interfaces: [lan]}
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Zone"
+metadata: {name: z2}
+spec: {interfaces: [lan]}

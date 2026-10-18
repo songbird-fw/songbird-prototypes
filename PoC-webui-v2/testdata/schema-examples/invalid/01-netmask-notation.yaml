@@ -1,0 +1,4 @@
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Address"
+metadata: {name: lan}
+spec: {subnet: 192.168.0.0/255.255.255.0}

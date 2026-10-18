@@ -1,0 +1,9 @@
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "AddressGroup"
+metadata: {name: a}
+spec: {members: [b]}
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "AddressGroup"
+metadata: {name: b}
+spec: {members: [a]}

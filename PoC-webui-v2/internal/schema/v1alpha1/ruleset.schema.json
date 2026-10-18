@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://config.songbird-fw.com/v1alpha1/ruleset.schema.json",
+  "title": "RuleSet",
+  "description": "The ordered list of firewall Rules that apply to traffic entering from one Interface/Zone and leaving through another (RA R-014, R-014.4). The (from, to) pair is a match criterion, so RuleSets for different pairs never overlap: ordering is only meaningful inside one RuleSet and it is the position in 'spec.rules'. Exactly one RuleSet per (from, to) pair (validator check). 'any' is NOT allowed for from/to: use a Zone instead (RA open issue 4). Traffic for a pair with no RuleSet gets Default Deny (R-033). NAT is a section of the Rule: 'snat' rewrites the source of accepted flows (R-002), 'dnat' rewrites the destination (R-003). A dnat Rule matches on the destination and service BEFORE translation (the public address), then translates to 'translateIpTo' / 'translateServiceTo'.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["apiVersion", "kind", "metadata", "spec"],
+  "properties": {
+    "apiVersion": { "$ref": "common.schema.json#/$defs/apiVersion" },
+    "kind": { "const": "RuleSet" },
+    "metadata": { "$ref": "common.schema.json#/$defs/metadata" },
+    "spec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from", "to", "rules"],
+      "properties": {
+        "from": { "description": "Incoming Interface or Zone.", "$ref": "common.schema.json#/$defs/reference" },
+        "to":   { "description": "Outgoing Interface or Zone.", "$ref": "common.schema.json#/$defs/reference" },
+        "rules": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/rule" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "addressList": {
+      "description": "Either [\"any\"] or a non-empty list of Address / AddressGroup names.",
+      "oneOf": [
+        { "type": "array", "const": ["any"] },
+        { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "common.schema.json#/$defs/reference" } }
+      ]
+    },
+    "serviceList": {
+      "description": "Either [\"any\"] or a non-empty list of Service / ServiceGroup names.",
+      "oneOf": [
+        { "type": "array", "const": ["any"] },
+        { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "common.schema.json#/$defs/reference" } }
+      ]
+    },
+    "nat": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": { "enum": ["snat", "dnat"] },
+        "translateIpTo": {
+          "description": "Address object providing the translated address. snat: optional — when omitted, the primary address of the outgoing Interface is used (masquerade); when set, the Address acts as an IP pool (subnet or range). dnat: required — a single-host Address (/32 or /128) or a range.",
+          "$ref": "common.schema.json#/$defs/reference"
+        },
+        "translateServiceTo": {
+          "description": "dnat only, optional. Service object with exactly one protocol entry and a single port; the destination port is rewritten to it. When omitted, the port is left unchanged (same as the Rule's service).",
+          "$ref": "common.schema.json#/$defs/reference"
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "dnat" } } },
+          "then": { "required": ["translateIpTo"] }
+        },
+        {
+          "if": { "properties": { "type": { "const": "snat" } } },
+          "then": { "not": { "required": ["translateServiceTo"] } }
+        }
+      ]
+    },
+    "rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "source", "destination", "service", "action"],
+      "properties": {
+        "name": {
+          "description": "Unique within the RuleSet; reported in Traffic Log events (R-026) and in the UI; stable anchor for Git diffs when rules are reordered.",
+          "$ref": "common.schema.json#/$defs/objectName"
+        },
+        "uuid": { "$ref": "common.schema.json#/$defs/uuid" },
+        "comment": { "type": "string", "maxLength": 1024 },
+        "enabled": { "type": "boolean", "default": true },
+        "source": { "$ref": "#/$defs/addressList" },
+        "destination": { "$ref": "#/$defs/addressList" },
+        "service": { "$ref": "#/$defs/serviceList" },
+        "action": { "enum": ["accept", "drop"] },
+        "log": {
+          "description": "Which Flow events to emit for this Rule. Default Deny always logs (R-033).",
+          "enum": ["none", "security", "all"],
+          "default": "security"
+        },
+        "nat": { "$ref": "#/$defs/nat" },
+        "schedule": {
+          "description": "Reserved for a future Schedule kind. Not implemented in v1alpha1.",
+          "$ref": "common.schema.json#/$defs/reference"
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "action": { "const": "drop" } }, "required": ["action"] },
+          "then": { "not": { "required": ["nat"] } }
+        }
+      ]
+    }
+  }
+}
