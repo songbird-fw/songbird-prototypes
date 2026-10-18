@@ -1,5 +1,13 @@
 # PoC — Web UI v2 (aligned with songbird-architecture)
 
+| | |
+|---|---|
+| Question | Does the Control Plane designed in `songbird-architecture` work end to end behind a real UI? |
+| Status | **Active**; to be aligned with domain model v0.6 and schema v1alpha1 (it still uses Zone with `srcInterface`/`dstInterface`, VirtualIP, `colour` and uppercase names) |
+| Based on | RA 2.0.1, domain model v0.4, components v0.1, reconciliation v0.1, ADR-0001 |
+| Result | Yes for the pipeline commit → validate → compile → apply (simulated drivers) → status. Five design points surfaced, listed at the end of this file. |
+| Decisions | Feeds the open points of `components.md` and the API design. |
+
 A proof of concept of the Songbird Web UI **and of the Control Plane slice behind it**, built from
 `songbird-architecture` (domain-model v0.4, components v0.1, reconciliation v0.1, ADR-0001) and
 `songbird-requirements-analysis` v2.0.1.

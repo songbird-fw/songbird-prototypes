@@ -1,3 +1,10 @@
+| | |
+|---|---|
+| Question | Is Go a suitable language for the Songbird Control Plane? |
+| Status | **Concluded** (archived 2026-10-18) |
+| Result | Yes. |
+| Decisions | RA constraint C-004 (Control Plane in Go, single binary). Library suggestions below (e.g. Gin) are not decisions. |
+
 # Feasibility Study: Using Go for the Songbird Firewall System
 
 ## Executive Summary

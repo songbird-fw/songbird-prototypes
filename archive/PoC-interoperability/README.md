@@ -1,3 +1,10 @@
+| | |
+|---|---|
+| Question | Can a Go backend combine an XDP fast path with nftables and PostgreSQL? |
+| Status | **Superseded** (archived 2026-10-18): this approach was rejected |
+| Result | It works as a scaffold, but it contradicts two decisions taken afterwards. |
+| Decisions | RA C-001 (no iptables/nftables for Policy enforcement); ADR-0001 (configuration only in YAML files in Git, no database). Keep it only as a reference for the JWT and SSE code. |
+
 # Go + XDP + nftables Firewall Backend Scaffold
 
 Questo scaffold estende la base iniziale con:

@@ -1,0 +1,28 @@
+name: active prototypes
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  webui-v2:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: PoC-webui-v2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: PoC-webui-v2/go.mod
+      - run: go vet ./...
+      - run: go test ./...
+      - run: CGO_ENABLED=0 go build -o songbird-webui .
+
+  hadron-payload:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the payload stage of the Hadron image
+        run: docker build -f PoC-hadron-os/Dockerfile --target payload .

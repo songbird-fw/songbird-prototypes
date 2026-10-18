@@ -1,3 +1,10 @@
+| | |
+|---|---|
+| Question | What could the Songbird Web UI look like? (static React mock-ups) |
+| Status | **Superseded** by [`PoC-webui-v2`](../../PoC-webui-v2) (archived 2026-10-18) |
+| Result | Visual exploration only, no Control Plane behind the screens. Some pages (world map, SOC metrics) go beyond the RA scope. |
+| Decisions | None. |
+
 # PoC Firewall WebUI
 
 This is a proof-of-concept web interface for a firewall implementation.
