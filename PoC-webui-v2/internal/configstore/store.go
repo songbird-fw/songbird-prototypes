@@ -29,7 +29,7 @@ type Author struct {
 type Change struct {
 	Kind string
 	Name string
-	Obj  any
+	Obj  m.Doc
 }
 
 // ConflictError is returned when the base revision is stale and another
@@ -77,12 +77,10 @@ func Open(dir string, factory func() *m.Tree) (*Store, error) {
 	}
 	t := factory()
 	var changes []Change
-	for _, k := range m.Kinds {
-		for _, n := range t.Names(k.Name) {
-			o, _ := t.Get(k.Name, n)
-			changes = append(changes, Change{k.Name, n, o})
-		}
-	}
+	t.Each(func(o m.Doc) {
+		kind, meta := o.Header()
+		changes = append(changes, Change{kind, meta.Name, m.AssignUUIDs(o, nil)})
+	})
 	if err := s.write(changes); err != nil {
 		return nil, err
 	}
@@ -103,6 +101,12 @@ func (s *Store) git(stdin io.Reader, args ...string) (string, error) {
 		return out.String(), fmt.Errorf("git %s: %v: %s", args[0], err, strings.TrimSpace(errb.String()+out.String()))
 	}
 	return out.String(), nil
+}
+
+// Resolve returns the commit id of a revision.
+func (s *Store) Resolve(rev string) (string, error) {
+	out, err := s.git(nil, "rev-parse", "--verify", rev+"^{commit}")
+	return strings.TrimSpace(out), err
 }
 
 func (s *Store) Head() (string, error) {
@@ -152,17 +156,22 @@ func (s *Store) Read(rev string) (*m.Tree, string, error) {
 		if _, err := io.ReadFull(r, data); err != nil {
 			return nil, "", err
 		}
-		dir, _, _ := strings.Cut(p, "/")
-		k, ok := m.KindByDir(dir)
-		if !ok {
-			continue
-		}
-		name, err := t.PutYAML(k.Name, data[:size])
+		docs, err := m.SplitDocs(data[:size])
 		if err != nil {
 			return nil, "", fmt.Errorf("%s: %w", p, err)
 		}
-		if want := k.Dir + "/" + name + ".yaml"; want != p {
-			return nil, "", fmt.Errorf("%s: metadata.name %q does not match the file name", p, name)
+		if len(docs) != 1 {
+			return nil, "", fmt.Errorf("%s: expected one object per file, found %d", p, len(docs))
+		}
+		d := docs[0]
+		if _, ok := m.KindByName(d.Kind); !ok {
+			return nil, "", fmt.Errorf("%s: unknown kind %q", p, d.Kind)
+		}
+		if want := m.FilePath(d.Kind, d.Name); want != p {
+			return nil, "", fmt.Errorf("%s: %s/%s must be stored in %s", p, d.Kind, d.Name, want)
+		}
+		if _, err := t.PutYAML(d.Kind, d.Data); err != nil {
+			return nil, "", fmt.Errorf("%s: %w", p, err)
 		}
 	}
 	t.Sort()
@@ -298,6 +307,13 @@ func (s *Store) Diff(from, to string) (string, error) {
 		return s.git(nil, "show", "--format=", "--no-color", to)
 	}
 	return s.git(nil, "diff", "--no-color", from, to)
+}
+
+// Archive returns the repository content at a revision as a tar.gz: the
+// export of the whole Configuration (R-020.1).
+func (s *Store) Archive(rev string) ([]byte, error) {
+	out, err := s.git(nil, "archive", "--format=tar.gz", "--prefix=songbird-config/", rev)
+	return []byte(out), err
 }
 
 func (s *Store) Subscribe() <-chan string {

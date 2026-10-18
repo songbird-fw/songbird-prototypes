@@ -1,0 +1,120 @@
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Address"
+metadata: { name: "lan1-subnet", comment: "Office subnet", color: "blue" }
+spec: { interface: "lan1", subnet: "192.168.10.0/24" }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Address"
+metadata: { name: "lan2-subnet", comment: "Servers and printers", color: "blue" }
+spec: { interface: "lan2", subnet: "192.168.20.0/24" }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Address"
+metadata: { name: "guest-subnet", color: "purple" }
+spec: { interface: "guest", subnet: "192.168.30.0/24" }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Address"
+metadata: { name: "admin-pcs", comment: "IT workstations", color: "management" }
+spec:
+  interface: "lan1"
+  range: { start: "192.168.10.10", end: "192.168.10.19" }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Address"
+metadata: { name: "nas", color: "green" }
+spec: { interface: "lan2", subnet: "192.168.20.30/32" }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Address"
+metadata: { name: "veeam-server", color: "green" }
+spec: { interface: "lan2", subnet: "192.168.20.40/32" }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Address"
+metadata: { name: "printers" }
+spec:
+  interface: "lan2"
+  range: { start: "192.168.20.100", end: "192.168.20.120" }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Address"
+metadata: { name: "web-01", comment: "nginx, listens on 8443", color: "red" }
+spec: { interface: "dmz", subnet: "172.16.40.10/32" }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Address"
+metadata: { name: "web-02", color: "red" }
+spec: { interface: "dmz", subnet: "172.16.40.11/32" }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Address"
+metadata: { name: "wan-ip", comment: "Our static public address (DNAT match)", color: "orange" }
+spec: { interface: "wan", subnet: "203.0.113.10/32" }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Address"
+metadata: { name: "wan-pool", comment: "Public addresses for guest SNAT (IP pool)", color: "orange" }
+spec:
+  interface: "wan"
+  range: { start: "203.0.113.20", end: "203.0.113.29" }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Address"
+metadata: { name: "offsite-backup", comment: "Backup provider", color: "green" }
+spec: { subnet: "198.51.100.0/28" }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "AddressGroup"
+metadata: { name: "grp-office", comment: "Everything in the internal Zone", color: "blue" }
+spec: { members: ["lan1-subnet", "lan2-subnet"] }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "AddressGroup"
+metadata: { name: "grp-backup", color: "green" }
+spec: { members: ["nas", "veeam-server"] }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "AddressGroup"
+metadata: { name: "web-servers", color: "red" }
+spec: { members: ["web-01", "web-02"] }
+---
+# Predefined Services (http, https, dns, ping, ssh, ntp) are added from internal/predefined.
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Service"
+metadata: { name: "https-8443", comment: "Internal listener of the DMZ web server", color: "red" }
+spec:
+  protocols:
+    - { protocol: "tcp", port: 8443 }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Service"
+metadata: { name: "rsync", color: "green" }
+spec:
+  protocols:
+    - { protocol: "tcp", port: 873 }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Service"
+metadata: { name: "veeam", comment: "Veeam Backup & Replication data mover", color: "green" }
+spec:
+  protocols:
+    - { protocol: "tcp", port: "2500-3300" }
+    - { protocol: "tcp", port: 9392 }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Service"
+metadata: { name: "smb" }
+spec:
+  protocols:
+    - { protocol: "tcp", port: 445 }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "ServiceGroup"
+metadata: { name: "web", category: "internet" }
+spec: { members: ["http", "https"] }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "ServiceGroup"
+metadata: { name: "offsite-sync", color: "green" }
+spec: { members: ["rsync", "ssh"] }

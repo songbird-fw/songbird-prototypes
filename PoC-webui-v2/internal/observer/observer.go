@@ -60,7 +60,10 @@ func (o *Observer) sample() {
 	if t := o.Rec.AppliedTree(); t != nil {
 		for _, i := range t.Interfaces {
 			n := i.Metadata.Name
-			base := map[string]float64{"wan": 40e6, "lan": 25e6, "dmz": 8e6}[i.Spec.Role]
+			if len(i.Spec.StaticAddresses()) == 0 && i.Spec.EffectiveRole() != "external" {
+				continue // e.g. an 802.1Q trunk: its traffic is counted on the VLANs
+			}
+			base := map[string]float64{"external": 40e6, "internal": 25e6, "dmz": 8e6, "transit": 15e6}[i.Spec.EffectiveRole()]
 			if i.Spec.Type == "vlan" {
 				base /= 2
 			}
@@ -181,7 +184,13 @@ func (o *Observer) Health() Health {
 	}
 	h.Subsystems["reconciler"] = rec
 	h.Subsystems["api"] = Subsystem{Status: "running"}
-	h.Subsystems["gitops"] = Subsystem{Status: "stopped", Detail: "not in phase 0.1 (no remote configured)"}
+	gitops := Subsystem{Status: "stopped", Detail: "System.git.enabled is false"}
+	if t := o.Rec.AppliedTree(); t != nil {
+		if g := t.Sys().Git; g != nil && g.Enabled {
+			gitops = Subsystem{Status: "stopped", Detail: "remote " + g.Remote + " configured; push/pull not implemented in the PoC"}
+		}
+	}
+	h.Subsystems["gitops"] = gitops
 	h.Subsystems["alerting"] = Subsystem{Status: "stopped", Detail: "not in phase 0.1"}
 	for k, s := range h.Subsystems {
 		if k == "gitops" || k == "alerting" {
@@ -197,20 +206,10 @@ func (o *Observer) Health() Health {
 // ActiveRoutes applies the DM-23 preference rule.
 func ActiveRoutes(t *m.Tree) map[string]bool {
 	best := map[string]m.StaticRoute{}
-	val := func(r m.StaticRoute) (int, int) {
-		d, p := r.Spec.Distance, r.Spec.Priority
-		if d == 0 {
-			d = 10
-		}
-		if p == 0 {
-			p = 1
-		}
-		return d, p
-	}
 	for _, r := range t.StaticRoutes {
 		b, ok := best[r.Spec.Destination]
-		d, p := val(r)
-		bd, bp := val(b)
+		d, p := r.Spec.Preference()
+		bd, bp := b.Spec.Preference()
 		if !ok || d < bd || d == bd && p < bp {
 			best[r.Spec.Destination] = r
 		}

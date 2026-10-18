@@ -32,20 +32,20 @@ export default {
       const stateCls = { 'in-sync': 'good', failed: 'bad', degraded: 'bad' }[s.state];
       mount(kpis,
         kpi('Reconciler', h('span', { class: 'row' }, h('span', { class: ['badge', stateCls || 'warn'], style: { fontSize: '14px' } }, s.state || '…')), s.appliedCommit ? `running ${short(s.appliedCommit)}` : '', 'sm'),
-        kpi('Policies', fmtNum(objs('Zone').reduce((n, z) => n + (z.spec.policies || []).filter((p) => p.enabled !== false).length, 0)), `${objs('Zone').length} zones · ${objs('Interface').length} interfaces`),
+        kpi('Policies', fmtNum(objs('RuleSet').reduce((n, rs) => n + (rs.spec.rules || []).filter((p) => p.enabled !== false).length, 0)), `${objs('RuleSet').length} RuleSets · ${objs('Zone').length} Zones · ${objs('Interface').length} Interfaces`),
         kpi('Flows accepted', fmtNum(c.accepted), total ? `${((c.accepted / total) * 100).toFixed(1)} % of flows` : ''),
-        kpi('Flows dropped', fmtNum(c.dropped), `${fmtNum(c.reasons['default-deny'] || 0)} by Default Deny`),
+        kpi('Flows dropped', fmtNum(c.dropped), `${fmtNum((c.reasons['default-deny'] || 0) + (c.reasons['no-ruleset'] || 0))} by Default Deny`),
         kpi('Events lost', fmtNum(c.eventsLost), 'rate-limited drop events (R-026.1)'));
 
       const xs = samples.map((x) => x.t);
       mount(sys, lineChart({ xs, series: [{ name: 'CPU', values: samples.map((x) => x.cpu) }, { name: 'Memory', values: samples.map((x) => x.mem) }], yMax: 100, unit: ' %' }));
-      const ifaces = objs('Interface').map((i) => i.metadata.name).slice(0, 4);
+      const ifaces = Object.keys(samples[samples.length - 1]?.rx || {}).slice(0, 4);
       mount(net, lineChart({ xs, series: ifaces.map((n) => ({ name: n, values: samples.map((x) => (x[dir]?.[n] || 0)) })), fmt: (v) => fmtBps(v).replace(/\.0 /, ' ') }));
 
       const hits = Object.entries(c.hits).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, v]) => ({ label: k, value: v }));
       const reasons = Object.entries(c.reasons).sort((a, b) => b[1] - a[1]).map(([k, v]) => ({ label: k, value: v }));
       mount(rankings,
-        h('section', { class: 'card' }, h('div', { class: 'head' }, h('h2', null, 'Top policies by flows'), h('span', { class: 'spacer' }), h('a', { href: '#/policies', class: 'small' }, 'Policies')),
+        h('section', { class: 'card' }, h('div', { class: 'head' }, h('h2', null, 'Top Policies by flows (RuleSet / Policy)'), h('span', { class: 'spacer' }), h('a', { href: '#/policies', class: 'small' }, 'Policies')),
           h('div', { class: 'body' }, hits.length ? bars(hits, fmtNum) : h('div', { class: 'empty' }, 'No traffic yet'))),
         h('section', { class: 'card' }, h('div', { class: 'head' }, h('h2', null, 'Verdicts by reason'), h('span', { class: 'spacer' }), h('a', { href: '#/traffic', class: 'small' }, 'Live traffic')),
           h('div', { class: 'body' }, reasons.length ? bars(reasons, fmtNum) : h('div', { class: 'empty' }, 'No traffic yet'))));

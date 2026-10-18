@@ -1,0 +1,74 @@
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Service"
+metadata:
+  name: "http"
+  category: "internet"
+spec:
+  protocols:
+    - { protocol: "tcp", port: 80 }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Service"
+metadata:
+  name: "https"
+  category: "internet"
+spec:
+  protocols:
+    - { protocol: "tcp", port: 443 }
+    - { protocol: "udp", port: 443 }   # HTTP/3
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Service"
+metadata:
+  name: "https-8443"
+  comment: "Internal listener of the DMZ web server"
+  color: "red"
+spec:
+  protocols:
+    - { protocol: "tcp", port: 8443 }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Service"
+metadata:
+  name: "dns"
+spec:
+  protocols:
+    - { protocol: "tcp", port: 53 }
+    - { protocol: "udp", port: 53 }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Service"
+metadata:
+  name: "k8s-api"
+  color: "k8s-blue"
+spec:
+  protocols:
+    - { protocol: "tcp", port: 6443 }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Service"
+metadata:
+  name: "veeam"
+  comment: "Veeam Backup & Replication data mover"
+  color: "green"
+spec:
+  protocols:
+    - { protocol: "tcp", port: "2500-3300" }
+    - { protocol: "tcp", port: 9392 }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Service"
+metadata:
+  name: "ping"
+spec:
+  protocols:
+    - { protocol: "icmp", icmpType: 8 }
+    - { protocol: "icmpv6", icmpType: 128 }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "ServiceGroup"
+metadata:
+  name: "web"
+  category: "internet"
+spec:
+  members: ["http", "https"]

@@ -1,0 +1,128 @@
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Interface"
+metadata: { name: "wan", comment: "FTTH uplink", color: "orange" }
+spec:
+  type: "physical"
+  device: "enp1s0"
+  role: "external"
+  allowAccess: ["ping"]
+  ipv4: { mode: "static", addresses: ["203.0.113.10/24"], gateway: "203.0.113.1" }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Interface"
+metadata: { name: "trunk", comment: "802.1Q trunk to the core switch" }
+spec:
+  type: "physical"
+  device: "enp2s0"
+  ipv4: { mode: "none" }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Interface"
+metadata: { name: "lan1", comment: "Office", color: "blue" }
+spec:
+  type: "vlan"
+  parent: "trunk"
+  vlanId: 10
+  role: "internal"
+  allowAccess: ["https", "ping", "dns", "dhcp", "ntp"]
+  ipv4: { mode: "static", addresses: ["192.168.10.1/24"] }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Interface"
+metadata: { name: "lan2", comment: "Servers and printers", color: "blue" }
+spec:
+  type: "vlan"
+  parent: "trunk"
+  vlanId: 20
+  role: "internal"
+  allowAccess: ["ping", "dns", "ntp"]
+  ipv4: { mode: "static", addresses: ["192.168.20.1/24"] }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Interface"
+metadata: { name: "guest", comment: "Guest Wi-Fi", color: "purple" }
+spec:
+  type: "vlan"
+  parent: "trunk"
+  vlanId: 30
+  role: "internal"
+  allowAccess: ["dns", "dhcp"]
+  ipv4: { mode: "static", addresses: ["192.168.30.1/24"] }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Interface"
+metadata: { name: "dmz", comment: "Published servers", color: "red" }
+spec:
+  type: "vlan"
+  parent: "trunk"
+  vlanId: 40
+  role: "dmz"
+  allowAccess: ["ping"]
+  ipv4: { mode: "static", addresses: ["172.16.40.1/24"] }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Zone"
+metadata: { name: "internal", comment: "Office and servers", color: "blue" }
+spec:
+  interfaces: ["lan1", "lan2"]
+  intraZoneTraffic: "deny"
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Zone"
+metadata: { name: "untrusted", color: "orange" }
+spec:
+  interfaces: ["wan"]
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Zone"
+metadata: { name: "dmz-zone", color: "red" }
+spec:
+  interfaces: ["dmz"]
+---
+# PoC extension kinds (internal/schema/ext): not in v1alpha1 yet.
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "StaticRoute"
+metadata: { name: "default", comment: "Primary uplink gateway" }
+spec: { destination: "0.0.0.0/0", gateway: "203.0.113.1", interface: "wan", distance: 10, priority: 1 }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "StaticRoute"
+metadata: { name: "default-backup", comment: "Backup router on the same segment", color: "green" }
+spec: { destination: "0.0.0.0/0", gateway: "203.0.113.2", interface: "wan", distance: 20, priority: 1 }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "StaticRoute"
+metadata: { name: "lab", comment: "Lab network behind the server router" }
+spec: { destination: "10.50.0.0/16", gateway: "192.168.20.254", interface: "lan2" }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "DhcpServer"
+metadata: { name: "lan1", color: "blue" }
+spec:
+  interface: "lan1"
+  enabled: true
+  rangeStart: "192.168.10.100"
+  rangeEnd: "192.168.10.199"
+  dnsServers: ["192.168.10.1"]
+  leaseTime: "24h"
+  reservations:
+    - { mac: "52:54:00:12:34:56", ip: "192.168.10.50", host: "mgmt-laptop" }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "DhcpServer"
+metadata: { name: "lan2", comment: "Prepared, not active: servers use static addresses" }
+spec:
+  interface: "lan2"
+  enabled: false
+  rangeStart: "192.168.20.150"
+  rangeEnd: "192.168.20.199"
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "DhcpServer"
+metadata: { name: "guest", color: "purple" }
+spec:
+  interface: "guest"
+  enabled: true
+  rangeStart: "192.168.30.50"
+  rangeEnd: "192.168.30.250"
+  leaseTime: "2h"

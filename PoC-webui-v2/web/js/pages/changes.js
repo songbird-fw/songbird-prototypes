@@ -1,7 +1,7 @@
 // Git history of the configuration repository: every saved change is a
 // commit (ADR-0001). Rollback is a new commit that restores a revision
 // (components.md), applied by the normal pipeline.
-import { state, h, icon, mount, api, short, ago, fmtTime, isAdmin, confirmDialog, save } from '../core.js';
+import { state, h, icon, mount, api, short, ago, fmtTime, isAdmin, confirmDialog, save, modal, validationBox } from '../core.js';
 
 let selected = null;
 
@@ -18,6 +18,29 @@ function colourDiff(text) {
   return pre;
 }
 
+// Import replaces the whole Configuration with YAML documents in any layout
+// (one or many per file), in one commit, only if the result is valid
+// (R-020, R-020.2). Users are kept when the import has none.
+function importDialog() {
+  const ta = h('textarea', { class: 'yaml-editor', spellcheck: 'false', placeholder: '---\napiVersion: "config.songbird-fw.com/v1alpha1"\nkind: "Address"\n…' });
+  const file = h('input', { type: 'file', accept: '.yaml,.yml', multiple: true, onchange: async () => {
+    const parts = await Promise.all([...file.files].map((f) => f.text()));
+    ta.value = parts.join('\n---\n');
+  } });
+  const errBox = h('div');
+  const btn = h('button', { class: 'primary danger-bg', onclick: async () => {
+    btn.disabled = true;
+    const r = await save('POST', '/api/v1/import', ta.value, { yaml: true });
+    btn.disabled = false;
+    if (r.ok) { close(); location.hash = '#/changes'; return; }
+    if (r.error.status === 422) mount(errBox, validationBox(r.error.data.validation, r.error.data.error));
+  } }, 'Replace the configuration');
+  const close = modal({ title: 'Import configuration', wide: true,
+    body: [h('p', { class: 'sub small', style: { margin: 0 } }, 'Paste or load v1alpha1 YAML files, e.g. songbird-yaml-schema/examples/valid. The whole configuration is replaced in one commit; nothing changes if any file is invalid. You can revert the import from this page.'),
+      file, errBox, ta],
+    foot: (c) => [h('span', { class: 'spacer' }), h('button', { onclick: c }, 'Cancel'), btn] });
+}
+
 export default {
   render(root, rest) {
     if (rest?.[0]) selected = rest[0];
@@ -25,7 +48,10 @@ export default {
     const detail = h('div', { class: 'card' }, h('div', { class: 'empty' }, 'Select a commit'));
     mount(root,
       h('div', { class: 'page-head' }, h('div', null, h('h1', null, 'Changes'),
-        h('p', null, 'History of the configuration repository. The UI, the CLI and pulls all produce commits; the Reconciler applies HEAD.'))),
+        h('p', null, 'History of the configuration repository. The UI, the CLI and pulls all produce commits; the Reconciler applies HEAD.')),
+        h('span', { class: 'spacer' }),
+        h('a', { class: 'button', href: '/api/v1/export', download: '', title: 'The repository at HEAD as tar.gz (R-020.1)' }, icon('download'), 'Export'),
+        isAdmin() && h('button', { onclick: () => importDialog() }, icon('upload'), 'Import…')),
       h('div', { class: 'split' }, h('section', { class: 'card', style: { maxHeight: 'calc(100vh - 190px)', overflowY: 'auto' } }, list), detail));
 
     let commits = [];

@@ -1,0 +1,4 @@
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Color"
+metadata: { name: "green", comment: "Backup" }
+spec: { hex: "#00FF00", predefined: true }

@@ -6,7 +6,7 @@ const MAX = 3000;
 let buf = [];          // newest last
 let paused = false;
 let pending = [];      // received while paused
-const f = { verdict: '', type: '', reason: '', src: '', dst: '', sport: '', dport: '', zone: '' };
+const f = { verdict: '', type: '', reason: '', src: '', dst: '', sport: '', dport: '', policy: '' };
 
 function match(e) {
   if (f.verdict && e.verdict !== f.verdict) return false;
@@ -16,7 +16,7 @@ function match(e) {
   if (f.dst && !e.dst.startsWith(f.dst)) return false;
   if (f.sport && String(e.sport) !== f.sport.trim()) return false;
   if (f.dport && String(e.dport) !== f.dport.trim()) return false;
-  if (f.zone && !(`${e.zone || ''}/${e.policy || ''}`).toLowerCase().includes(f.zone.toLowerCase())) return false;
+  if (f.policy && !(`${e.ruleSet || ''}/${e.policy || ''}`).toLowerCase().includes(f.policy.toLowerCase())) return false;
   return true;
 }
 
@@ -26,12 +26,14 @@ function evRow(e) {
     h('td', { class: 'mono small' }, t.toLocaleTimeString(undefined, { hour12: false }) + '.' + String(t.getMilliseconds()).padStart(3, '0')),
     h('td', null, e.verdict === 'accept' ? h('span', { class: 'badge good' }, 'accept') : h('span', { class: 'badge bad' }, 'drop')),
     h('td', { class: 'small' }, e.type.replace('FLOW_', '').toLowerCase()),
-    h('td', { class: 'small' }, e.reason),
+    h('td', { class: 'small nowrap' }, e.reason),
     h('td', { class: 'small' }, e.proto),
     h('td', { class: 'mono' }, e.src, e.sport ? h('span', { class: 'muted' }, ':' + e.sport) : ''),
-    h('td', { class: 'mono' }, e.dst, e.dport ? h('span', { class: 'muted' }, ':' + e.dport) : ''),
-    h('td', { class: 'small' }, e.inIf),
-    h('td', { class: 'small' }, e.zone ? h('span', null, e.zone, e.policy ? h('span', { class: 'muted' }, ' / ') : '', e.policy || h('span', { class: 'muted' }, ' / default deny')) : h('span', { class: 'muted' }, '—')),
+    h('td', { class: 'mono' }, e.dst, e.dport ? h('span', { class: 'muted' }, ':' + e.dport) : '',
+      e.xdst && h('div', { class: 'small', title: 'Destination after DNAT (matched before translation, ADR-0010)' }, '→ ', e.xdst),
+      e.xsrc && h('div', { class: 'small muted', title: 'Source after SNAT' }, 'snat ', e.xsrc)),
+    h('td', { class: 'small' }, e.inIf, e.outIf ? h('span', { class: 'muted' }, ' → ' + e.outIf) : ''),
+    h('td', { class: 'small' }, e.ruleSet ? h('span', null, e.ruleSet, h('span', { class: 'muted' }, ' / '), e.policy || h('span', { class: 'muted' }, 'default deny')) : h('span', { class: 'muted' }, '—')),
     h('td', { class: 'num small' }, e.type === 'FLOW_END' ? `${fmtNum(e.packets)} pkt · ${fmtBytes(e.bytes)}` : ''));
 }
 
@@ -60,19 +62,19 @@ export default {
 
     mount(root,
       h('div', { class: 'page-head' },
-        h('div', null, h('h1', null, 'Live traffic'), h('p', null, 'One event per Flow: new, dropped, ended (R-026). The Data Plane is simulated from the applied configuration.')),
+        h('div', null, h('h1', null, 'Live traffic'), h('p', null, 'One event per Flow: new, dropped, ended, with the matched RuleSet and Policy (R-026). The Data Plane is simulated from the applied configuration, with a first-match reference classifier.')),
         h('span', { class: 'spacer' }), lost, pauseBtn, h('button', { onclick: () => { buf = []; pending = []; paint(); } }, 'Clear')),
       h('div', { class: 'card pad', style: { marginBottom: '12px' } }, h('div', { class: 'row wrap' },
         select('verdict', 'Any verdict', ['accept', 'drop']),
         select('type', 'Any event', ['FLOW_NEW', 'FLOW_DROP', 'FLOW_END']),
-        select('reason', 'Any reason', ['policy', 'default-deny', 'no-zone', 'local-in', 'local-in-deny', 'malformed', 'fragment', 'ipv6-unsupported']),
+        select('reason', 'Any reason', ['policy', 'default-deny', 'no-ruleset', 'intra-zone', 'local-in', 'local-in-deny', 'blocklist', 'dnat-shadowed', 'dnat-route-mismatch', 'malformed', 'fragment', 'ipv6-unsupported']),
         input('src', 'Source address'), input('sport', 'Src port', '90px'),
         input('dst', 'Destination address'), input('dport', 'Dst port', '90px'),
-        input('zone', 'Zone / Policy', '150px'),
+        input('policy', 'RuleSet / Policy', '160px'),
         h('button', { class: 'ghost', onclick: () => { Object.keys(f).forEach((k) => (f[k] = '')); window.songbirdRerender(); } }, 'Reset'),
         h('span', { class: 'spacer' }), info)),
       h('section', { class: 'card' }, h('div', { class: 'table-wrap' }, h('table', null,
-        h('thead', null, h('tr', null, ['Time', 'Verdict', 'Event', 'Reason', 'Proto', 'Source', 'Destination', 'In', 'Zone / Policy', 'Totals'].map((t, k) => h('th', { class: k === 9 && 'num' }, t)))),
+        h('thead', null, h('tr', null, ['Time', 'Verdict', 'Event', 'Reason', 'Proto', 'Source', 'Destination', 'In → out', 'RuleSet / Policy', 'Totals'].map((t, k) => h('th', { class: k === 9 && 'num' }, t)))),
         tbody))));
     paintPause();
 

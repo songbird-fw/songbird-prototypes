@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://config.songbird-fw.com/v1alpha1/songbird.schema.json",
+  "title": "Songbird configuration object",
+  "description": "Entry point: dispatches on 'kind' to the per-kind schema. Every YAML document in a Songbird configuration tree must validate against this schema.",
+  "type": "object",
+  "required": ["apiVersion", "kind", "metadata", "spec"],
+  "properties": {
+    "kind": {
+      "enum": ["System", "Color", "Interface", "Zone", "Address", "AddressGroup", "Service", "ServiceGroup", "RuleSet"]
+    }
+  },
+  "allOf": [
+    { "if": { "properties": { "kind": { "const": "System" } } },       "then": { "$ref": "system.schema.json" } },
+    { "if": { "properties": { "kind": { "const": "Color" } } },        "then": { "$ref": "color.schema.json" } },
+    { "if": { "properties": { "kind": { "const": "Interface" } } },    "then": { "$ref": "interface.schema.json" } },
+    { "if": { "properties": { "kind": { "const": "Zone" } } },         "then": { "$ref": "zone.schema.json" } },
+    { "if": { "properties": { "kind": { "const": "Address" } } },      "then": { "$ref": "address.schema.json" } },
+    { "if": { "properties": { "kind": { "const": "AddressGroup" } } }, "then": { "$ref": "addressgroup.schema.json" } },
+    { "if": { "properties": { "kind": { "const": "Service" } } },      "then": { "$ref": "service.schema.json" } },
+    { "if": { "properties": { "kind": { "const": "ServiceGroup" } } }, "then": { "$ref": "servicegroup.schema.json" } },
+    { "if": { "properties": { "kind": { "const": "RuleSet" } } },      "then": { "$ref": "ruleset.schema.json" } }
+  ]
+}

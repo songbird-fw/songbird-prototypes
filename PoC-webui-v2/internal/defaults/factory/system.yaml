@@ -1,0 +1,46 @@
+# Factory-default configuration of the PoC (songbird-yaml-schema v1alpha1).
+# A small office: WAN, an 802.1Q trunk with office, server, guest and DMZ VLANs.
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "System"
+metadata:
+  name: "system"
+  comment: "Head office firewall (PoC)"
+spec:
+  hostname: "fw01.songbird.lan"
+  timezone: "Europe/Rome"
+  admin:
+    httpsPort: 443
+    redirectHttp: true
+    sessionTimeout: "8h"
+    lockout: { threshold: 5, duration: "10m" }
+    trustedHosts: ["lan1-subnet"]
+    certificate: { mode: "self-signed" }
+    ui: { theme: "auto", language: "en" }
+  ntp:
+    enabled: true
+    servers: ["0.it.pool.ntp.org", "1.it.pool.ntp.org"]
+    serveToInterfaces: ["internal"]
+  dns:
+    mode: "forwarder"
+    upstreams: ["9.9.9.9", "149.112.112.112"]
+    failoverAfterTimeouts: 3
+    localDomain: "songbird.lan"
+    localRecords:
+      - { name: "nas", address: "192.168.20.30" }
+      - { name: "printer-hall", address: "192.168.20.100" }
+    serveToInterfaces: ["internal", "guest"]
+  logging:
+    rotation: { maxFileSizeMb: 100, retentionDays: 30, compress: true }
+    anonymizeSourceIp: { enabled: true, interfaces: ["guest"], ipv4MaskBits: 8 }
+    syslog: { enabled: false }
+  session:
+    maxSessions: 1000000
+    ipv4NonInitialFragments: "drop"
+    onRuleChange: "terminate"
+  git: { enabled: false }
+  updates: { channel: "stable", automatic: false }
+  threatFeeds:
+    enabled: true
+    refreshInterval: "1h"
+    sources:
+      - { name: "feodo", url: "https://feodotracker.abuse.ch/downloads/ipblocklist.txt" }

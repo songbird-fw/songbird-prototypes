@@ -1,11 +1,11 @@
 // Diagnostics: real-time status of each Subsystem (R-032.1), the Reconciler
 // (reconciliation.md §9) with the last transaction, and PoC fault injection.
-import { state, h, icon, mount, api, short, fmtTime, isAdmin, validationBox, toast } from '../core.js';
+import { state, h, icon, mount, api, short, fmtTime, fmtNum, isAdmin, validationBox, toast, findings } from '../core.js';
 
 const LABEL = { dataplane: 'Data Plane', network: 'Network driver', dhcp: 'DHCP', dns: 'DNS', reconciler: 'Reconciler', api: 'API / UI', gitops: 'GitOps sync', alerting: 'Alerting' };
 
 function statusBadge(s, detail) {
-  if (s === 'stopped' && /not in phase/.test(detail || '')) return h('span', { class: 'badge' }, 'not configured');
+  if (s === 'stopped' && /not in phase|enabled is false|not implemented/.test(detail || '')) return h('span', { class: 'badge' }, 'not configured');
   return h('span', { class: ['badge', { running: 'good', degraded: 'warn', stopped: 'bad' }[s]] }, s);
 }
 
@@ -14,6 +14,7 @@ export default {
     const subsys = h('div', { class: 'subsys' });
     const recBox = h('div');
     const faults = h('div');
+    const valid = h('div');
     const overall = h('span');
     mount(root,
       h('div', { class: 'page-head' },
@@ -21,6 +22,7 @@ export default {
         h('span', { class: 'spacer' }), overall, h('a', { href: '/health', target: '_blank', class: 'small' }, 'GET /health')),
       h('div', { class: 'stack' },
         h('section', { class: 'card' }, h('div', { class: 'head' }, h('h2', null, 'Subsystems')), h('div', { class: 'body' }, subsys)),
+        valid,
         recBox,
         faults));
 
@@ -36,6 +38,12 @@ export default {
             h('div', { class: 'small muted', style: { marginTop: '4px' } }, x.detail || ''));
         }));
       }
+      const f = findings();
+      mount(valid, h('section', { class: 'card' },
+        h('div', { class: 'head' }, h('h2', null, 'Validation of HEAD'), h('span', { class: 'spacer' }),
+          h('span', { class: 'muted small' }, `schema ${state.config?.apiVersion || ''} + semantic rules`)),
+        h('div', { class: 'body' }, f.length ? validationBox(f.filter((e) => e.severity === 'error'), f.some((e) => e.severity === 'error') ? 'Errors: HEAD cannot be applied' : null, f.filter((e) => e.severity === 'warning'))
+          : h('div', { class: 'vok' }, icon('check'), 'No errors and no warnings.'))));
       if (!s) return;
       const a = s.lastAttempt;
       const p = s.plan;
@@ -60,9 +68,12 @@ export default {
           h('div', { class: 'head' }, h('h2', null, 'Compiled plan'), h('span', { class: 'spacer' }), h('span', { class: 'muted small' }, 'simulated Compiler')),
           p ? h('div', { class: 'body stack' },
             h('div', { class: 'grid kpi' },
-              h('div', null, h('div', { class: 'sub small' }, 'Zones'), h('div', { style: { fontSize: '20px', fontWeight: 650 } }, p.zones)),
+              h('div', { title: 'RuleSets and the directed Interface pairs they cover once Zones are expanded' }, h('div', { class: 'sub small' }, 'RuleSets'), h('div', { style: { fontSize: '20px', fontWeight: 650 } }, p.ruleSets), h('div', { class: 'muted small' }, `${p.pairs} Interface pairs`)),
               h('div', null, h('div', { class: 'sub small' }, 'Enabled policies'), h('div', { style: { fontSize: '20px', fontWeight: 650 } }, p.policies), p.disabled ? h('div', { class: 'muted small' }, `${p.disabled} disabled, not compiled`) : null),
-              h('div', { title: 'Groups and lists expanded: sources × destinations × services (R-014.1–R-014.3)' }, h('div', { class: 'sub small' }, 'Match entries'), h('div', { style: { fontSize: '20px', fontWeight: 650 } }, p.matchEntries))),
+              h('div', { title: 'Groups and lists expanded: sources × destinations × services × Interface pairs (R-014.1–R-014.3)' }, h('div', { class: 'sub small' }, 'Match entries'), h('div', { style: { fontSize: '20px', fontWeight: 650 } }, fmtNum(p.matchEntries)),
+                h('div', { class: 'muted small' }, `${p.dnatEntries} DNAT entries / ${fmtNum(state.config?.limits?.dnatEntries)}`))),
+            Object.keys(p.intraZone || {}).length ? h('div', null, h('h3', { style: { marginBottom: '6px' } }, 'Between members of a Zone without a RuleSet (DM-39)'),
+              h('div', { class: 'row wrap' }, Object.entries(p.intraZone).map(([z, v]) => h('span', { class: 'pill' }, z, h('strong', null, v))))) : null,
             h('div', null, h('h3', { style: { marginBottom: '6px' } }, 'Local-in (allowAccess + implicit service ports)'),
               h('table', null, h('tbody', null, Object.entries(p.localIn).map(([k, v]) => h('tr', null, h('td', null, k), h('td', null, v.length ? v.join(', ') : h('span', { class: 'muted' }, 'nothing — dropped'))))))),
             h('div', null, h('h3', { style: { marginBottom: '6px' } }, 'Section hashes'),

@@ -1,0 +1,79 @@
+# yaml-language-server: $schema=../../../schema/songbird.schema.json
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Interface"
+metadata:
+  name: "wan"
+  comment: "FTTH uplink"
+  color: "orange"
+spec:
+  type: "physical"
+  device: "enp1s0"
+  role: "external"
+  allowAccess: ["ping"]
+  ipv4:
+    mode: "static"
+    addresses: ["78.25.11.42/30"]
+    gateway: "78.25.11.41"
+  ipv6:
+    mode: "dhcpv6-pd"
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Interface"
+metadata:
+  name: "trunk"
+  comment: "802.1Q trunk to the core switch"
+spec:
+  type: "physical"
+  device: "enp2s0"
+  ipv4: { mode: "none" }
+  ipv6: { mode: "none" }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Interface"
+metadata:
+  name: "lan1"
+  comment: "Office"
+  color: "blue"
+spec:
+  type: "vlan"
+  parent: "trunk"
+  vlanId: 10
+  allowAccess: ["https", "ping", "dns", "dhcp", "ntp"]
+  ipv4:
+    mode: "static"
+    addresses: ["192.168.0.1/24"]
+  ipv6:
+    mode: "static"
+    addresses: ["2001:db8:0:10::1/64"]
+    routerAdvertisement:
+      enabled: true
+      delegatedPrefixFrom: "wan"
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Interface"
+metadata:
+  name: "lan2"
+  comment: "Printers"
+  color: "blue"
+spec:
+  type: "vlan"
+  parent: "trunk"
+  vlanId: 20
+  allowAccess: ["ping", "dns", "dhcp"]
+  ipv4:
+    mode: "static"
+    addresses: ["192.168.2.1/24"]
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Interface"
+metadata:
+  name: "dmz"
+  color: "red"
+spec:
+  type: "vlan"
+  parent: "trunk"
+  vlanId: 30
+  allowAccess: ["ping"]
+  ipv4:
+    mode: "static"
+    addresses: ["192.168.30.1/24"]
