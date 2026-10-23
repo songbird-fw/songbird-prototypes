@@ -40,10 +40,11 @@ type Observer struct {
 	prevIdle, prevTotal uint64
 	walk                map[string]float64
 	started             time.Time
+	tiers               []*tier
 }
 
 func New(rec *reconciler.Reconciler, ev *events.Collector) *Observer {
-	return &Observer{Rec: rec, Ev: ev, walk: map[string]float64{}, started: time.Now()}
+	return &Observer{Rec: rec, Ev: ev, walk: map[string]float64{}, started: time.Now(), tiers: newTiers()}
 }
 
 func (o *Observer) Run() {
@@ -84,6 +85,9 @@ func (o *Observer) sample() {
 	o.samples = append(o.samples, s)
 	if len(o.samples) > Keep {
 		o.samples = o.samples[len(o.samples)-Keep:]
+	}
+	for _, t := range o.tiers {
+		t.add(s)
 	}
 	o.mu.Unlock()
 }

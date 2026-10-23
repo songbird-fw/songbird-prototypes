@@ -61,7 +61,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/v1/history", s.authed(s.history))
 	mux.HandleFunc("GET /api/v1/history/{rev}/diff", s.authed(s.diff))
 	mux.HandleFunc("POST /api/v1/history/{rev}/revert", s.writer(s.revert))
-	mux.HandleFunc("GET /api/v1/metrics", s.authed(func(w http.ResponseWriter, r *http.Request, _ auth.Session) { writeJSON(w, 200, s.Obs.Samples()) }))
+	mux.HandleFunc("GET /api/v1/metrics", s.authed(s.metrics))
 	mux.HandleFunc("GET /api/v1/events", s.authed(s.recentEvents))
 	mux.HandleFunc("GET /api/v1/events/stream", s.authed(s.stream))
 	mux.HandleFunc("GET /api/v1/audit", s.authed(s.auditTail))
@@ -70,6 +70,21 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/", func(w http.ResponseWriter, r *http.Request) { writeErr(w, 404, "not found") })
 	mux.Handle("GET /", s.static())
 	return secure(mux)
+}
+
+// metrics returns the history of one dashboard range (R-027):
+// ?range=rt|5m|1h|1d|1w, default 5m.
+func (s *Server) metrics(w http.ResponseWriter, r *http.Request, _ auth.Session) {
+	name := r.URL.Query().Get("range")
+	if name == "" {
+		name = "5m"
+	}
+	h, err := s.Obs.History(name)
+	if err != nil {
+		writeErr(w, 400, err.Error())
+		return
+	}
+	writeJSON(w, 200, h)
 }
 
 // ---- plumbing ---------------------------------------------------------------------

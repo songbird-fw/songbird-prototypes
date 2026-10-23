@@ -87,6 +87,7 @@ go run . validate -appliance ./data/config                       # also requires
 | Diagnostics → *Fail next apply* on Data Plane, then change a Policy | Transaction rolled back in reverse order, state *failed*, banner "desired ≠ applied" (R-020.6) |
 | Changes → pick an old commit → *Restore* | Rollback is a new commit (components.md) |
 | Edit the same object in two tabs, save both | Second save gets 409: optimistic locking on the revision, file-level merge (R-021.5) |
+| Dashboard → *Real-time · 5 min · 1 h · 1 day · 1 week* | Raw samples every 2 s for 5 minutes, then averages per 30 s, 10 min and 1 h (`GET /api/v1/metrics?range=…`); history is in memory since the service started (R-027) |
 | Live traffic | SSE stream of FLOW_NEW/DROP/END with RuleSet / Policy, DNAT and SNAT translations and the reasons of `dataplane.md` §11 (R-026, R-028, R-028.1) |
 | Wait for the periodic port-scan burst | Drop events are rate-limited and `events_lost` grows (R-026.1) |
 | System → *Edit settings* → session timeout `1h` | The next login gets a 1 h session: Auth reads `System.admin` (R-043.4, R-043.5, R-043.2) |
@@ -101,8 +102,8 @@ reserved for the active state and focus, no gradients or decoration. **Instrumen
 sentence case, with hierarchy carried by size and weight (the page title is the one large element);
 **IBM Plex Mono** only for data such as addresses, ports and revisions. The fonts are served by the binary
 (an appliance has no CDN), SIL OFL 1.1 (`web/fonts/`). The left rail shows icons only; labels appear on hover
-or focus. Light and dark themes share the same tokens (`web/style.css`); in the dark theme the page is
-recessed and the rail, bars and panels are raised.
+or focus. Light and dark themes share the same tokens (`web/style.css`); the dark theme uses the Nord palette
+(Polar Night grounds, Snow Storm text, Frost accent and primary buttons, Aurora states).
 
 - **Colors.** As in FortiGate, an object's Color tints its name, not a swatch before it. Only Addresses,
   Services and their groups are coloured; Interfaces, Zones and RuleSets are not.
@@ -123,7 +124,7 @@ recessed and the rail, bars and panels are raised.
 | `internal/configstore` | Config Manager — Git repo, one file per object, commits, optimistic locking, uuids, history, revert, archive |
 | `internal/reconciler` | Reconciler + Applier — level-triggered loop, ordered stages, rollback, last known good; simulated Compiler |
 | `internal/events` | Simulated Data Plane with a first-match reference classifier (DNAT before translation) + Event Collector |
-| `internal/observer` | Observer — `/health` (R-032), CPU/memory from `/proc`, simulated throughput |
+| `internal/observer` | Observer — `/health` (R-032), CPU/memory from `/proc`, simulated throughput, in-memory history for the dashboard ranges |
 | `internal/auth`, `internal/audit` | Auth (bcrypt cost 12, signed sessions, lockout from `System.admin`); Audit Log (hash-chained JSON lines) |
 | `internal/api` | API Server — REST + SSE; never touches drivers |
 | `web/` | Web UI — vanilla ES modules, no build step; fonts in `web/fonts` |
@@ -144,7 +145,7 @@ static-routes/*   users/*                                                       
 `Content-Type: application/yaml`), `POST /api/v1/validate/{kind}/{name}` (dry run), `GET /api/v1/objects/{kind}/{name}/yaml`,
 `PUT /api/v1/users/{name}`, `GET /api/v1/export` (tar.gz), `POST /api/v1/import` (YAML, whole configuration),
 `GET /api/v1/schema/{file}`, `GET /api/v1/status`, `GET /api/v1/history`, `GET /api/v1/history/{rev}/diff`,
-`POST /api/v1/history/{rev}/revert`, `GET /api/v1/events`, `GET /api/v1/events/stream` (SSE), `GET /api/v1/metrics`,
+`POST /api/v1/history/{rev}/revert`, `GET /api/v1/events`, `GET /api/v1/events/stream` (SSE), `GET /api/v1/metrics?range=rt|5m|1h|1d|1w`,
 `GET /api/v1/audit`, `GET /api/v1/audit/verify`, `POST /api/v1/diagnostics/faults` (PoC only), `GET /health` (no auth).
 Writes need `X-Requested-With: songbird` (CSRF). 422 responses carry
 `validation: [{file, line, path, reason, rule, constraint, severity}]`; successful saves carry the file's `warnings`.
