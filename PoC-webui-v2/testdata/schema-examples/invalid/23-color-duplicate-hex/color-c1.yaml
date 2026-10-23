@@ -1,0 +1,4 @@
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Color"
+metadata: { name: "c1" }
+spec: { hex: "#326CE5" }

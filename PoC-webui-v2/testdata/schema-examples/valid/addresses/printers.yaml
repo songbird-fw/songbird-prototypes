@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=../../../songbird.schema.json
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Address"
+metadata:
+  name: "printers"
+  color: "blue"
+spec:
+  interface: "lan2"
+  range:
+    start: "192.168.2.1"
+    end: "192.168.2.10"

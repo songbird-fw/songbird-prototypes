@@ -1,0 +1,17 @@
+# yaml-language-server: $schema=../../../songbird.schema.json
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Interface"
+metadata:
+  name: "wan"
+  comment: "FTTH uplink"
+  color: "orange"
+spec:
+  type: "physical"
+  device: "enp1s0"
+  allowAccess: ["ping"]
+  ipv4:
+    mode: "static"
+    addresses: ["78.25.11.42/30"]
+    gateway: "78.25.11.41"
+  ipv6:
+    mode: "dhcpv6-pd"

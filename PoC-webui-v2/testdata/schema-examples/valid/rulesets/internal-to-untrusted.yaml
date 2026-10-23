@@ -1,0 +1,44 @@
+# yaml-language-server: $schema=../../../songbird.schema.json
+# One RuleSet per (from, to) pair. Order = position in spec.rules, first match wins.
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "RuleSet"
+metadata:
+  name: "internal-to-untrusted"
+  comment: "Office and printers going to the Internet"
+spec:
+  from: "internal"
+  to: "untrusted"
+  rules:
+    - name: "block-printers-internet"
+      source: ["printers"]
+      destination: ["any"]
+      service: ["any"]
+      action: "drop"
+      log: "all"
+
+    - name: "lan-web-dns"
+      comment: "Only web, DNS and ping allowed out; masquerade to the WAN address"
+      source: ["grp-lan"]
+      destination: ["any"]
+      service: ["web", "dns", "ping"]
+      action: "accept"
+      nat:
+        type: "snat"              # translateIpTo omitted => outgoing interface address
+
+    - name: "block-google-fqdn"
+      comment: "FQDN Addresses are not supported by the Data Plane yet (R-012.4): kept disabled"
+      enabled: false
+      source: ["grp-lan"]
+      destination: ["google"]
+      service: ["any"]
+      action: "drop"
+
+    - name: "k8s-egress-fixed-ip"
+      comment: "Cluster egress pinned to our static IP (IP pool = Address)"
+      source: ["k8s-api"]
+      destination: ["any"]
+      service: ["any"]
+      action: "accept"
+      nat:
+        type: "snat"
+        translateIpTo: "wan-ip"

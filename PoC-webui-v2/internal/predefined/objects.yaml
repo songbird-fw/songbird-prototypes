@@ -1,0 +1,16 @@
+# Predefined objects shipped with every configuration (RA R-012.1, R-010.1, DM-21), exactly as in
+# songbird-fw/schema/examples/valid: they cannot be modified or deleted; metadata stays editable.
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Address"
+metadata: { name: "any", comment: "Any IPv4 address" }
+spec: { subnet: "0.0.0.0/0", predefined: true }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Address"
+metadata: { name: "any6", comment: "Any IPv6 address" }
+spec: { subnet: "::/0", predefined: true }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Service"
+metadata: { name: "any", comment: "Any protocol and port (FortiGate: ALL)" }
+spec: { protocols: [{ protocol: "any" }], predefined: true }

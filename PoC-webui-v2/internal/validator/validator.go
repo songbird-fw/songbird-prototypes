@@ -3,8 +3,8 @@
 //
 //  1. structural: every object against the JSON Schema (package schema);
 //  2. semantic: the cross-object rules JSON Schema cannot express — the
-//     rule ids of songbird-yaml-schema/validate.py, plus the constraints of
-//     domain-model.md v0.6 (DM-xx) that the schema does not cover.
+//     rule ids of songbird-fw/schema/validate.py, plus the constraints of
+//     domain-model.md v0.7 (DM-xx) that the schema does not cover.
 //
 // It is pure: no I/O, no clock, no global state (components.md, rule 3).
 // Every error names file, line, path and reason (R-020.3). Warnings are
@@ -14,6 +14,7 @@ package validator
 import (
 	"fmt"
 	"net/netip"
+	"slices"
 	"sort"
 	"strings"
 
@@ -104,8 +105,9 @@ func (x *v) warn(rule, dm, path, format string, args ...any) {
 // Options select the checks that only apply to a running appliance.
 type Options struct {
 	// Appliance requires what a running appliance has: the System object,
-	// the predefined palette (DM-21) and an admin User. `songbird validate`
-	// on a plain schema tree omits them, like validate.py.
+	// the predefined objects (DM-21) and an admin User. `songbird validate`
+	// on a plain schema tree injects the predefined objects when they are
+	// missing and does not ask for the others, like validate.py.
 	Appliance bool
 }
 
@@ -114,11 +116,15 @@ type Options struct {
 func Validate(t *m.Tree) []Error { return ValidateWith(t, Options{Appliance: true}) }
 
 func ValidateWith(t *m.Tree, opt Options) []Error {
+	if !opt.Appliance {
+		t = withShipped(t)
+	}
 	x := &v{t: t, sys: t.Sys(), opt: opt}
 	x.structural()
 	x.names()
 	x.system()
 	x.colorsCheck()
+	x.predefinedObjects()
 	x.interfaces()
 	x.zones()
 	x.addresses()
@@ -142,6 +148,28 @@ func ValidateWith(t *m.Tree, opt Options) []Error {
 		return false
 	})
 	return out
+}
+
+// withShipped returns the tree with the predefined Addresses and Service
+// injected when it does not contain them: they ship with the product, so a
+// schema tree may omit them (validate.py, R-012.1). Colors are not injected:
+// a tree without the palette simply does not use it.
+func withShipped(t *m.Tree) *m.Tree {
+	c := t
+	for _, d := range predefined.Docs() {
+		kind, meta := d.Header()
+		if kind == "Color" {
+			continue
+		}
+		if _, ok := t.Get(kind, meta.Name); ok {
+			continue
+		}
+		if c == t {
+			c = t.Clone()
+		}
+		_ = c.Put(d)
+	}
+	return c
 }
 
 // ---- layer 1 ------------------------------------------------------------------------
@@ -231,20 +259,16 @@ func (x *v) system() {
 				x.ref(x.addrNS, a, fmt.Sprintf("spec.admin.trustedHosts[%d]", k), "Address", "AddressGroup")
 			}
 		}
-		if s.NTP != nil {
-			for k, i := range s.NTP.ServeToInterfaces {
-				x.ref(x.netNS, i, fmt.Sprintf("spec.ntp.serveToInterfaces[%d]", k))
-			}
+		if ntp := s.NTP(); ntp != nil {
+			x.listenOn("ntp", ntp.ListenOn)
 		}
-		if s.DNS != nil {
-			for k, i := range s.DNS.ServeToInterfaces {
-				x.ref(x.netNS, i, fmt.Sprintf("spec.dns.serveToInterfaces[%d]", k))
+		if dns := s.DNS(); dns != nil {
+			x.listenOn("dns", dns.ListenOn)
+			if dns.DNS64 != nil && *dns.DNS64 && (s.NAT64 == nil || !s.NAT64.Enabled) {
+				x.err("dns64-without-nat64", "R-018.6", "spec.systemServices.dns.dns64", "dns64 requires spec.nat64.enabled: true")
 			}
-			if s.DNS.DNS64 != nil && *s.DNS.DNS64 && (s.NAT64 == nil || !s.NAT64.Enabled) {
-				x.err("dns64-without-nat64", "R-018.6", "spec.dns.dns64", "dns64 requires spec.nat64.enabled: true")
-			}
-			if s.DNS.Mode == "recursive" && len(s.DNS.Upstreams) > 0 {
-				x.err("recursive-upstreams", "R-018.3", "spec.dns.upstreams", "upstreams are meaningless in recursive mode")
+			if dns.Mode == "recursive" && len(dns.Upstreams) > 0 {
+				x.err("recursive-upstreams", "R-018.3", "spec.systemServices.dns.upstreams", "upstreams are meaningless in recursive mode")
 			}
 		}
 		if s.Logging != nil && s.Logging.AnonymizeSourceIP != nil {
@@ -253,7 +277,25 @@ func (x *v) system() {
 			}
 		}
 		if s.NAT64 != nil && s.NAT64.Enabled {
-			x.warn("ipv6-deferred", "R-057", "spec.nat64.enabled", "NAT64 is deferred (domain model v0.6 is IPv4 only): stored, not applied")
+			x.warn("ipv6-deferred", "R-057", "spec.nat64.enabled", "NAT64 is deferred (domain model v0.7 is IPv4 only): stored, not applied")
+		}
+	}
+}
+
+// listenOn checks DM-45: the references exist (a Zone stands for its
+// members) and an Interface appears at most once in the expanded list.
+func (x *v) listenOn(service string, refs []string) {
+	seen := map[string]string{}
+	for k, r := range refs {
+		path := fmt.Sprintf("spec.systemServices.%s.listenOn[%d]", service, k)
+		if x.ref(x.netNS, r, path) == nil {
+			continue
+		}
+		for _, i := range x.t.Side(r) {
+			if other, dup := seen[i]; dup {
+				x.err("listen-duplicate", "DM-45", path, "Interface %q is already in the list through %q", i, other)
+			}
+			seen[i] = r
 		}
 	}
 }
@@ -293,6 +335,52 @@ func (x *v) colorsCheck() {
 			x.ref(x.colors, meta.Color, "metadata.color", "Color")
 		}
 	})
+}
+
+// ---- predefined Addresses and Service (DM-21, R-012.1, R-010.1) ------------------------------
+
+func (x *v) predefinedObjects() {
+	for _, a := range x.t.Addresses {
+		x.at(a)
+		_, shipped := predefined.Address(a.Metadata.Name)
+		switch {
+		case shipped && !predefined.AddressMatches(a):
+			want, _ := predefined.Address(a.Metadata.Name)
+			x.err("predefined-immutable", "DM-21", "spec", "predefined Address %q must be exactly {subnet: %s, predefined: true}; only its metadata is editable", a.Metadata.Name, want.Spec.Subnet)
+		case !shipped && a.Spec.Predefined:
+			x.err("predefined-unknown", "DM-21", "spec.predefined", "%q is marked predefined but is not a shipped object (%v)", a.Metadata.Name, predefined.AddressNames())
+		}
+	}
+	for _, s := range x.t.Services {
+		x.at(s)
+		_, shipped := predefined.Service(s.Metadata.Name)
+		switch {
+		case shipped && !predefined.ServiceMatches(s):
+			x.err("predefined-immutable", "DM-21", "spec", "predefined Service %q must be exactly {protocols: [{protocol: any}], predefined: true}; only its metadata is editable", s.Metadata.Name)
+		case !shipped && s.Spec.Predefined:
+			x.err("predefined-unknown", "DM-21", "spec.predefined", "%q is marked predefined but is not a shipped object (%v)", s.Metadata.Name, predefined.ServiceNames())
+		}
+		if !s.Spec.Predefined {
+			for k, p := range s.Spec.Protocols {
+				if p.Protocol == "any" {
+					x.err("any-protocol", "R-010.1", fmt.Sprintf("spec.protocols[%d].protocol", k), "protocol \"any\" is allowed only in the predefined Service any")
+				}
+			}
+		}
+	}
+	if !x.opt.Appliance {
+		return
+	}
+	for _, d := range predefined.Docs() { // DM-21: the shipped objects are present on an appliance
+		kind, meta := d.Header()
+		if kind == "Color" {
+			continue // reported by colorsCheck
+		}
+		if _, ok := x.t.Get(kind, meta.Name); !ok {
+			x.cur, x.file = nil, m.FilePath(kind, meta.Name)
+			x.err("predefined-missing", "DM-21", "", "the predefined %s %q is missing", kind, meta.Name)
+		}
+	}
 }
 
 // ---- Interfaces (DM-03, DM-04) ------------------------------------------------------------------
@@ -368,7 +456,7 @@ func (x *v) interfaces() {
 			}
 		}
 		if s.IPv6 != nil && s.IPv6.Mode != "none" {
-			x.warn("ipv6-deferred", "R-057", "spec.ipv6", "IPv6 is deferred (domain model v0.6 is IPv4 only): stored, not applied; IPv6 packets are dropped and counted")
+			x.warn("ipv6-deferred", "R-057", "spec.ipv6", "IPv6 is deferred (domain model v0.7 is IPv4 only): stored, not applied; IPv6 packets are dropped and counted")
 			if ra := s.IPv6.RouterAdvertisement; ra != nil && ra.DelegatedPrefixFrom != "" {
 				if src := x.ref(x.netNS, ra.DelegatedPrefixFrom, "spec.ipv6.routerAdvertisement.delegatedPrefixFrom", "Interface"); src != nil {
 					if v6 := src.(m.Interface).Spec.IPv6; v6 == nil || v6.Mode != "dhcpv6-pd" {
@@ -410,7 +498,7 @@ func (x *v) addresses() {
 		switch s.Form() {
 		case "subnet":
 			if p, err := netip.ParsePrefix(s.Subnet); err == nil {
-				if !p.Addr().Is4() {
+				if !p.Addr().Is4() && !s.Predefined {
 					x.warn("ipv6-deferred", "R-057", "spec.subnet", "IPv6 Addresses are stored but never match: IPv6 is deferred")
 				} else if p.Masked() != p {
 					x.warn("cidr-host-bits", "DM-14", "spec.subnet", "%s has host bits set: it is used as %s", s.Subnet, p.Masked())
@@ -426,53 +514,35 @@ func (x *v) addresses() {
 			case a2.Less(a1):
 				x.err("range-order", "DM-14", "spec.range", "range start %s is after range end %s", a1, a2)
 			}
-		case "fqdn":
-			x.warn("dataplane-unsupported", "R-012", "spec.fqdn", "FQDN Addresses are not supported by the Data Plane yet (dataplane.md §7.3): Policies using it never match")
-		case "mac":
-			x.warn("dataplane-unsupported", "R-012", "spec.mac", "MAC Addresses are not supported by the Data Plane yet (dataplane.md §7.3): Policies using it never match")
 		}
 	}
 }
 
-// ---- Groups (R-011, R-013) ----------------------------------------------------------------------------
+// ---- Groups (DM-15, DM-18): flat, members of the leaf kind only ---------------------------------
 
 func (x *v) groups() {
-	check := func(objs []m.Object[m.GroupSpec], ns map[string]m.Doc, kinds []string, req string) {
-		graph := map[string][]string{}
+	check := func(objs []m.Object[m.GroupSpec], ns map[string]m.Doc, leaf, dm string) {
 		for _, g := range objs {
 			x.at(g)
-			graph[g.Metadata.Name] = g.Spec.Members
+			seen := map[string]bool{}
 			for k, mem := range g.Spec.Members {
-				x.ref(ns, mem, fmt.Sprintf("spec.members[%d]", k), kinds...)
-			}
-		}
-		const white, grey, black = 0, 1, 2
-		color := map[string]int{}
-		var dfs func(n string, path []string)
-		dfs = func(n string, path []string) {
-			color[n] = grey
-			for _, mem := range graph[n] {
-				if _, isGroup := graph[mem]; !isGroup {
+				path := fmt.Sprintf("spec.members[%d]", k)
+				if seen[mem] {
+					x.err("duplicate-member", dm, path, "%q is listed twice", mem)
+				}
+				seen[mem] = true
+				if o := x.ref(ns, mem, path, leaf); o == nil {
 					continue
 				}
-				switch color[mem] {
-				case grey:
-					x.at(ns[n])
-					x.err("group-cycle", req, "spec.members", "cycle: %s", strings.Join(append(path, mem), " -> "))
-				case white:
-					dfs(mem, append(path, mem))
-				}
-			}
-			color[n] = black
-		}
-		for _, g := range objs {
-			if color[g.Metadata.Name] == white {
-				dfs(g.Metadata.Name, []string{g.Metadata.Name})
 			}
 		}
 	}
-	check(x.t.AddressGroups, x.addrNS, []string{"Address", "AddressGroup"}, "R-013")
-	check(x.t.ServiceGroups, x.svcNS, []string{"Service", "ServiceGroup"}, "R-011")
+	check(x.t.AddressGroups, x.addrNS, "Address", "DM-15")
+	check(x.t.ServiceGroups, x.svcNS, "Service", "DM-18")
+	// DM-16 (all members bound to the same Interface) is not enforced: the
+	// schema has no AddressGroup.interface, and with Zones a group may mix
+	// members of several Interfaces of one Zone (the schema example grp-lan
+	// does). DM-12 already applies to each expanded member. PoC finding.
 }
 
 // ---- Services (DM-17, DM-21) ----------------------------------------------------------------------------
@@ -480,17 +550,25 @@ func (x *v) groups() {
 func (x *v) services() {
 	for _, s := range x.t.Services {
 		x.at(s)
+		seen := map[string]bool{}
 		for k, p := range s.Spec.Protocols {
-			for f, pr := range map[string]*m.PortRange{"port": p.Port, "sourcePort": p.SourcePort} {
-				if pr != nil && (pr.Lo < 1 || pr.Hi > 65535 || pr.Lo > pr.Hi) {
-					x.err("port-range", "DM-17", fmt.Sprintf("spec.protocols[%d].%s", k, f), "%s is not an ordered range within 1-65535", pr)
-				}
+			if pr := p.Port; pr != nil && (pr.Lo < 1 || pr.Hi > 65535 || pr.Lo > pr.Hi) {
+				x.err("port-range", "DM-17", fmt.Sprintf("spec.protocols[%d].port", k), "%s is not an ordered range within 1-65535", pr)
 			}
-		}
-		if !predefined.ServiceMatches(s) {
-			x.err("predefined-service", "DM-21", "spec.protocols", "%q is a predefined Service: its protocols cannot change (only metadata is editable)", s.Metadata.Name)
+			key := fmt.Sprintf("%s|%v|%v|%v|%v", p.Protocol, p.Port, deref(p.ICMPType), deref(p.ICMPCode), deref(p.ProtocolNumber))
+			if seen[key] {
+				x.err("duplicate-entry", "DM-17", fmt.Sprintf("spec.protocols[%d]", k), "this protocol entry is listed twice")
+			}
+			seen[key] = true
 		}
 	}
+}
+
+func deref(p *int) any {
+	if p == nil {
+		return nil
+	}
+	return *p
 }
 
 // ---- Routing (DM-22, DM-23) ----------------------------------------------------------------------------------
@@ -520,90 +598,150 @@ func (x *v) routes() {
 	}
 }
 
-// ---- DHCPv4 (DM-24 … DM-29) -----------------------------------------------------------------------------------
+// ---- DHCPv4: System.systemServices.dhcp (R-017 … R-017.6, DM-25 … DM-29) ----------------------------
+// Rule ids are those of validate.py; DM-28 (no overlap between Interfaces)
+// follows from DM-04 + dhcp-range-subnet and is checked for completeness.
 
 func (x *v) dhcp() {
+	if len(x.t.System) == 0 {
+		return
+	}
+	o := x.t.System[0]
+	x.at(o)
+	sys := o.Spec
+	listens := func(svc string, iface string) bool {
+		var refs []string
+		switch svc {
+		case "dns":
+			if d := sys.DNS(); d != nil {
+				refs = d.ListenOn
+			}
+		case "ntp":
+			if n := sys.NTP(); n != nil && n.Enabled {
+				refs = n.ListenOn
+			}
+		}
+		for _, r := range refs {
+			if slices.Contains(x.t.Side(r), iface) {
+				return true
+			}
+		}
+		return false
+	}
 	type rng struct {
 		a, b  netip.Addr
 		iface string
 	}
 	var ranges []rng
-	served := map[string]string{}
-	for _, d := range x.t.DhcpServers {
-		x.at(d)
-		s := d.Spec
-		o := x.ref(x.netNS, s.Interface, "spec.interface", "Interface")
-		if o == nil {
+	pools := sys.DHCP()
+	names := make([]string, 0, len(pools))
+	for n := range pools {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		pool := pools[name]
+		fld := "spec.systemServices.dhcp." + name
+		t := x.ref(x.netNS, name, fld, "Interface")
+		if t == nil {
 			continue
 		}
-		iface := o.(m.Interface)
-		if other, ok := served[s.Interface]; ok {
-			x.err("dhcp-duplicate", "R-017.3", "spec.interface", "Interface %q is already served by DhcpServer %q", s.Interface, other)
+		iface := t.(m.Interface)
+		if v4 := iface.Spec.IPv4; v4 == nil || v4.Mode != "static" {
+			x.err("dhcp-needs-static", "R-017.5", fld, "Interface %q has no static IPv4 address; a DHCP server needs one", name)
+			continue
 		}
-		served[s.Interface] = d.Metadata.Name
-		if iface.Spec.EffectiveRole() == "external" {
-			x.err("dhcp-role", "DM-24", "spec.interface", "no DHCP server on an external Interface")
+		nets := prefixes(iface)
+		own := map[netip.Addr]bool{}
+		for _, p := range nets {
+			own[p.Addr()] = true
 		}
-		if s.LeaseTime != "" {
-			if v, ok := m.ParseDuration(s.LeaseTime); ok && v < 60e9 {
-				x.err("dhcp-lease", "R-017.1", "spec.leaseTime", "lease time must be at least 1m")
+		inside := func(s string) bool {
+			ip, err := netip.ParseAddr(s)
+			if err != nil {
+				return false
+			}
+			_, ok := inAny(ip, nets)
+			return ok
+		}
+		if pool.LeaseTime != "" {
+			if d, ok := m.ParseDuration(pool.LeaseTime); ok && d < 60e9 {
+				x.err("dhcp-lease", "R-017.1", fld+".leaseTime", "lease time must be at least 1m")
 			}
 		}
-		a, err1 := netip.ParseAddr(s.RangeStart)
-		b, err2 := netip.ParseAddr(s.RangeEnd)
+		a, err1 := netip.ParseAddr(pool.Range.Start)
+		b, err2 := netip.ParseAddr(pool.Range.End)
 		if err1 != nil || err2 != nil {
 			continue
 		}
 		if b.Less(a) {
-			x.err("dhcp-range", "DM-25", "spec.rangeEnd", "rangeEnd is before rangeStart")
+			x.err("dhcp-range-order", "DM-25", fld+".range", "start must be <= end")
 			continue
 		}
-		pfx, in := inAny(a, prefixes(iface))
-		if !in || !pfx.Contains(b) {
-			x.err("dhcp-range", "DM-25", "spec.rangeStart", "the range must lie in one subnet of Interface %q", s.Interface)
+		if !inside(pool.Range.Start) || !inside(pool.Range.End) {
+			x.err("dhcp-range-subnet", "DM-25", fld+".range", "must lie inside the Interface subnet(s) %v", nets)
 			continue
 		}
 		within := func(ip netip.Addr) bool { return !ip.Less(a) && !b.Less(ip) }
-		if within(pfx.Addr()) {
-			x.err("dhcp-range", "DM-26", "spec.rangeStart", "the range contains the Interface address %s", pfx.Addr())
+		for ip := range own {
+			if within(ip) {
+				x.err("dhcp-range-own-address", "DM-26", fld+".range", "contains the firewall's own address %s", ip)
+			}
 		}
-		gw := pfx.Addr()
-		if s.Gateway != "" {
-			if g, err := netip.ParseAddr(s.Gateway); err == nil {
-				if !pfx.Contains(g) {
-					x.err("dhcp-gateway", "DM-27", "spec.gateway", "gateway must lie in %s", pfx.Masked())
-				} else {
-					gw = g
-					if within(g) {
-						x.err("dhcp-range", "DM-26", "spec.gateway", "the range contains the gateway")
-					}
+		gw := netip.Addr{}
+		if pool.Gateway != "" {
+			if g, err := netip.ParseAddr(pool.Gateway); err == nil {
+				gw = g
+				if !inside(pool.Gateway) {
+					x.err("dhcp-gateway-subnet", "DM-27", fld+".gateway", "not inside the Interface subnet")
+				} else if within(g) {
+					x.err("dhcp-range-own-address", "DM-26", fld+".range", "contains the gateway %s", g)
 				}
 			}
 		}
 		for _, r := range ranges {
 			if !b.Less(r.a) && !r.b.Less(a) {
-				x.err("dhcp-overlap", "DM-28", "spec.rangeStart", "the range overlaps the DHCP range of %q", r.iface)
+				x.err("dhcp-overlap", "DM-28", fld+".range", "overlaps the DHCP range of %q", r.iface)
 			}
 		}
-		ranges = append(ranges, rng{a, b, s.Interface})
+		ranges = append(ranges, rng{a, b, name})
 		macs, ips := map[string]bool{}, map[string]bool{}
-		for k, r := range s.Reservations {
-			path := fmt.Sprintf("spec.reservations[%d]", k)
-			ip, err := netip.ParseAddr(r.IP)
+		for k, r := range pool.Reservations {
+			path := fmt.Sprintf("%s.reservations[%d]", fld, k)
+			ip, err := netip.ParseAddr(r.Address)
 			if err != nil {
 				continue
 			}
-			if !pfx.Contains(ip) || ip == pfx.Addr() || ip == gw {
-				x.err("dhcp-reservation", "DM-29", path+".ip", "%s must be in %s and differ from the Interface address and the gateway", r.IP, pfx.Masked())
+			if !inside(r.Address) || own[ip] || ip == gw {
+				x.err("dhcp-reservation-subnet", "DM-29", path+".address", "%s must be inside the Interface subnet and differ from the Interface address and the gateway", r.Address)
 			}
 			mac := strings.ToLower(r.MAC)
 			if macs[mac] {
-				x.err("dhcp-reservation", "DM-29", path+".mac", "MAC %s is reserved twice", r.MAC)
+				x.err("dhcp-reservation-dup", "DM-29", path+".mac", "duplicate MAC %s", r.MAC)
 			}
-			if ips[r.IP] {
-				x.err("dhcp-reservation", "DM-29", path+".ip", "%s is reserved twice", r.IP)
+			if ips[r.Address] {
+				x.err("dhcp-reservation-dup", "DM-29", path+".address", "duplicate address %s", r.Address)
 			}
-			macs[mac], ips[r.IP] = true, true
+			macs[mac], ips[r.Address] = true, true
+		}
+		if !pool.IsEnabled() {
+			continue // a prepared pool advertises nothing yet
+		}
+		// R-017.6: advertising the firewall itself requires the service to listen there
+		for _, c := range []struct {
+			key, svc string
+			list     []string
+			implicit bool
+		}{{"dnsServers", "dns", pool.DNSServers, pool.DNSServers == nil}, {"ntpServers", "ntp", pool.NTPServers, false}} {
+			self := c.implicit
+			for _, s := range c.list {
+				if ip, err := netip.ParseAddr(s); err == nil && own[ip] {
+					self = true
+				}
+			}
+			if self && !listens(c.svc, name) {
+				x.err("dhcp-advertises-silent-service", "R-017.6", fld+"."+c.key, "the pool advertises the firewall as %s server, but %q (or its Zone) is not in systemServices.%s.listenOn", strings.ToUpper(c.svc), name, c.svc)
+			}
 		}
 	}
 }

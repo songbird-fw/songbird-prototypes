@@ -1,7 +1,7 @@
 // Package defaults builds the factory-default configuration committed on
 // first boot (components.md: "No bootstrap mode"). It is plain v1alpha1
-// YAML (factory/), plus the predefined palette and Services, so that every
-// page of the PoC has something realistic to show.
+// YAML (factory/), plus the predefined objects (palette, any, any6, Service
+// any), so that every page of the PoC has something realistic to show.
 package defaults
 
 import (
@@ -20,11 +20,8 @@ var factory embed.FS
 // Tree returns a fresh copy of the factory configuration.
 func Tree() *m.Tree {
 	t := &m.Tree{}
-	for _, c := range predefined.Palette() {
-		_ = t.Put(c)
-	}
-	for _, s := range predefined.Services() {
-		_ = t.Put(s)
+	for _, d := range predefined.Docs() {
+		_ = t.Put(d)
 	}
 	src := validator.Sources{}
 	files, _ := fs.Glob(factory, "factory/*.yaml")

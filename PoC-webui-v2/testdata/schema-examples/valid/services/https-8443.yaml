@@ -1,0 +1,10 @@
+# yaml-language-server: $schema=../../../songbird.schema.json
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Service"
+metadata:
+  name: "https-8443"
+  comment: "Internal listener of the DMZ web server"
+  color: "red"
+spec:
+  protocols:
+    - { protocol: "tcp", port: 8443 }

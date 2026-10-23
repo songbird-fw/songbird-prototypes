@@ -130,8 +130,8 @@ func TestStaleRevisionConflictsOnlyOnSameFile(t *testing.T) {
 		return o
 	}, "Address", "nas")
 	var ce *configstore.ConflictError
-	if !errors.As(err, &ce) || ce.File != "objects/addresses/nas.yaml" {
-		t.Fatalf("expected conflict on objects/addresses/nas.yaml, got %v", err)
+	if !errors.As(err, &ce) || ce.File != "addresses/nas.yaml" {
+		t.Fatalf("expected conflict on addresses/nas.yaml, got %v", err)
 	}
 }
 
@@ -168,7 +168,7 @@ func TestRepositoryFilesAreSchemaValid(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := s.File("HEAD", "firewall/rulesets/untrusted-to-dmz.yaml")
+	b, err := s.File("HEAD", "rulesets/untrusted-to-dmz.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}

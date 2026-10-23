@@ -1,9 +1,0 @@
-apiVersion: "config.songbird-fw.com/v1alpha1"
-kind: "Address"
-metadata: {name: web}
-spec: {subnet: 10.0.0.1/32}
----
-apiVersion: "config.songbird-fw.com/v1alpha1"
-kind: "AddressGroup"
-metadata: {name: web}
-spec: {members: [web]}

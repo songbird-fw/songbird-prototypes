@@ -68,18 +68,10 @@ func (s *Server) config(w http.ResponseWriter, r *http.Request, _ auth.Session) 
 		"findings":     findings,
 		"kinds":        kinds,
 		"activeRoutes": observer.ActiveRoutes(t),
-		"predefined":   map[string][]string{"Color": predefined.PaletteNames(), "Service": predefinedServices()},
+		"predefined":   map[string][]string{"Color": predefined.PaletteNames(), "Address": predefined.AddressNames(), "Service": predefined.ServiceNames()},
 		"limits": map[string]int{"policiesPerRuleSet": validator.MaxPoliciesPerRuleSet, "ruleSets": validator.MaxRuleSets,
 			"dnatEntries": validator.MaxDNATEntries},
 	})
-}
-
-func predefinedServices() []string {
-	var out []string
-	for _, s := range predefined.Services() {
-		out = append(out, s.Metadata.Name)
-	}
-	return out
 }
 
 func (s *Server) objectYAML(w http.ResponseWriter, r *http.Request, _ auth.Session) {
@@ -244,8 +236,11 @@ func mutation(kind, name string, obj m.Doc, create, del bool, before, after *any
 			if _, shipped := predefined.ColorHex(name); kind == "Color" && shipped {
 				return nil, &apiError{code: 422, msg: "predefined Colors cannot be deleted (DM-21); edit their comment instead"}
 			}
-			if kind == "Service" && predefined.IsService(name) {
-				return nil, &apiError{code: 422, msg: "predefined Services cannot be deleted (DM-21)"}
+			if _, shipped := predefined.Address(name); kind == "Address" && shipped {
+				return nil, &apiError{code: 422, msg: "the predefined Addresses any and any6 cannot be deleted (DM-21, R-012.1)"}
+			}
+			if _, shipped := predefined.Service(name); kind == "Service" && shipped {
+				return nil, &apiError{code: 422, msg: "the predefined Service any cannot be deleted (DM-21, R-010.1)"}
 			}
 			t.Delete(kind, name)
 			change = configstore.Change{Kind: kind, Name: name}

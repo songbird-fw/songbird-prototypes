@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=../../../songbird.schema.json
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "RuleSet"
+metadata:
+  name: "untrusted-to-lan1"
+spec:
+  from: "untrusted"
+  to: "lan1"
+  rules:
+    - name: "publish-k8s-api"
+      comment: "Port unchanged: translateServiceTo omitted"
+      source: ["any"]
+      destination: ["wan-ip"]
+      service: ["k8s-api"]
+      action: "accept"
+      log: "all"
+      nat:
+        type: "dnat"
+        translateIpTo: "k8s-api"

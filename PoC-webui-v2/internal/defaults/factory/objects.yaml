@@ -66,7 +66,7 @@ spec: { subnet: "198.51.100.0/28" }
 ---
 apiVersion: "config.songbird-fw.com/v1alpha1"
 kind: "AddressGroup"
-metadata: { name: "grp-office", comment: "Everything in the internal Zone", color: "blue" }
+metadata: { name: "grp-office", comment: "Office and server subnets (flat group)", color: "blue" }
 spec: { members: ["lan1-subnet", "lan2-subnet"] }
 ---
 apiVersion: "config.songbird-fw.com/v1alpha1"
@@ -79,7 +79,52 @@ kind: "AddressGroup"
 metadata: { name: "web-servers", color: "red" }
 spec: { members: ["web-01", "web-02"] }
 ---
-# Predefined Services (http, https, dns, ping, ssh, ntp) are added from internal/predefined.
+# Only the Service "any" is predefined (schema: predefined-unknown otherwise).
+# The common Services ship as ordinary objects: editable and deletable.
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Service"
+metadata: { name: "http", category: "internet" }
+spec:
+  protocols:
+    - { protocol: "tcp", port: 80 }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Service"
+metadata: { name: "https", category: "internet" }
+spec:
+  protocols:
+    - { protocol: "tcp", port: 443 }
+    - { protocol: "udp", port: 443 }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Service"
+metadata: { name: "dns" }
+spec:
+  protocols:
+    - { protocol: "tcp", port: 53 }
+    - { protocol: "udp", port: 53 }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Service"
+metadata: { name: "ping" }
+spec:
+  protocols:
+    - { protocol: "icmp", icmpType: 8 }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Service"
+metadata: { name: "ssh", category: "infra" }
+spec:
+  protocols:
+    - { protocol: "tcp", port: 22 }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Service"
+metadata: { name: "ntp", category: "infra" }
+spec:
+  protocols:
+    - { protocol: "udp", port: 123 }
+---
 apiVersion: "config.songbird-fw.com/v1alpha1"
 kind: "Service"
 metadata: { name: "https-8443", comment: "Internal listener of the DMZ web server", color: "red" }

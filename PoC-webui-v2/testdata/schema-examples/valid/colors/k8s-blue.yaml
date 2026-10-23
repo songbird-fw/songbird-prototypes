@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=../../../songbird.schema.json
+# user-defined colour
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Color"
+metadata:
+  name: "k8s-blue"
+  comment: "Kubernetes cluster (brand colour)"
+spec:
+  hex: "#326CE5"

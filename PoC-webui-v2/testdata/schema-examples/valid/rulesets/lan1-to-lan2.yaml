@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=../../../songbird.schema.json
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "RuleSet"
+metadata:
+  name: "lan1-to-lan2"
+spec:
+  from: "lan1"
+  to: "lan2"
+  rules:
+    - name: "office-to-printers"
+      source: ["lan1-subnet"]
+      destination: ["lan2-subnet"]
+      service: ["any"]
+      action: "accept"
+      log: "none"

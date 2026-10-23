@@ -1,0 +1,6 @@
+# yaml-language-server: $schema=../../../songbird.schema.json
+# Predefined palette entry (1 of 16): hex is immutable, the comment is yours.
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Color"
+metadata: { name: "indigo" }
+spec: { hex: "#283593", predefined: true }

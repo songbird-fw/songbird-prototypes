@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=../../../songbird.schema.json
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Service"
+metadata:
+  name: "k8s-api"
+  color: "k8s-blue"
+spec:
+  protocols:
+    - { protocol: "tcp", port: 6443 }

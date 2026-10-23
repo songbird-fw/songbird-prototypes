@@ -2,23 +2,43 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://config.songbird-fw.com/v1alpha1/service.schema.json",
   "title": "Service",
-  "description": "A named L4 service (R-010): one or more protocol entries. TCP/UDP/SCTP require a port or range; ICMP/ICMPv6 accept optional type/code; 'ip' matches a raw protocol number.",
+  "description": "A named L4 service (R-010): one or more protocol entries, possibly of different protocols (e.g. DNS = TCP 53 + UDP 53). TCP/UDP/SCTP require a destination port or range (no source-port matching, team decision 2026-10-19); ICMP/ICMPv6 accept optional type/code; 'ip' matches a raw protocol number. The predefined Service 'any' (R-010.1) is the single entry {protocol: any} with predefined: true; 'any' as a protocol is accepted only there (validator check).",
   "type": "object",
   "additionalProperties": false,
-  "required": ["apiVersion", "kind", "metadata", "spec"],
+  "required": [
+    "apiVersion",
+    "kind",
+    "metadata",
+    "spec"
+  ],
   "properties": {
-    "apiVersion": { "$ref": "common.schema.json#/$defs/apiVersion" },
-    "kind": { "const": "Service" },
-    "metadata": { "$ref": "common.schema.json#/$defs/metadata" },
+    "apiVersion": {
+      "$ref": "common.schema.json#/$defs/apiVersion"
+    },
+    "kind": {
+      "const": "Service"
+    },
+    "metadata": {
+      "$ref": "common.schema.json#/$defs/metadata"
+    },
     "spec": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["protocols"],
+      "required": [
+        "protocols"
+      ],
       "properties": {
         "protocols": {
           "type": "array",
           "minItems": 1,
-          "items": { "$ref": "#/$defs/protocolEntry" }
+          "items": {
+            "$ref": "#/$defs/protocolEntry"
+          }
+        },
+        "predefined": {
+          "description": "True only for the shipped Service any.",
+          "type": "boolean",
+          "default": false
         }
       }
     }
@@ -27,35 +47,177 @@
     "protocolEntry": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["protocol"],
+      "required": [
+        "protocol"
+      ],
       "properties": {
-        "protocol": { "enum": ["tcp", "udp", "sctp", "icmp", "icmpv6", "ip"] },
-        "port": { "$ref": "common.schema.json#/$defs/portOrRange" },
-        "sourcePort": { "$ref": "common.schema.json#/$defs/portOrRange" },
-        "icmpType": { "type": "integer", "minimum": 0, "maximum": 255 },
-        "icmpCode": { "type": "integer", "minimum": 0, "maximum": 255 },
-        "protocolNumber": { "type": "integer", "minimum": 0, "maximum": 255 }
+        "protocol": {
+          "enum": [
+            "tcp",
+            "udp",
+            "sctp",
+            "icmp",
+            "icmpv6",
+            "ip",
+            "any"
+          ]
+        },
+        "port": {
+          "$ref": "common.schema.json#/$defs/portOrRange"
+        },
+        "icmpType": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 255
+        },
+        "icmpCode": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 255
+        },
+        "protocolNumber": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 255
+        }
       },
       "allOf": [
         {
-          "if": { "properties": { "protocol": { "enum": ["tcp", "udp", "sctp"] } } },
+          "if": {
+            "properties": {
+              "protocol": {
+                "enum": [
+                  "tcp",
+                  "udp",
+                  "sctp"
+                ]
+              }
+            }
+          },
           "then": {
-            "required": ["port"],
-            "not": { "anyOf": [ { "required": ["icmpType"] }, { "required": ["icmpCode"] }, { "required": ["protocolNumber"] } ] }
+            "required": [
+              "port"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "icmpType"
+                  ]
+                },
+                {
+                  "required": [
+                    "icmpCode"
+                  ]
+                },
+                {
+                  "required": [
+                    "protocolNumber"
+                  ]
+                }
+              ]
+            }
           }
         },
         {
-          "if": { "properties": { "protocol": { "enum": ["icmp", "icmpv6"] } } },
+          "if": {
+            "properties": {
+              "protocol": {
+                "enum": [
+                  "icmp",
+                  "icmpv6"
+                ]
+              }
+            }
+          },
           "then": {
-            "not": { "anyOf": [ { "required": ["port"] }, { "required": ["sourcePort"] }, { "required": ["protocolNumber"] } ] },
-            "dependentRequired": { "icmpCode": ["icmpType"] }
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "port"
+                  ]
+                },
+                {
+                  "required": [
+                    "protocolNumber"
+                  ]
+                }
+              ]
+            },
+            "dependentRequired": {
+              "icmpCode": [
+                "icmpType"
+              ]
+            }
           }
         },
         {
-          "if": { "properties": { "protocol": { "const": "ip" } } },
+          "if": {
+            "properties": {
+              "protocol": {
+                "const": "ip"
+              }
+            }
+          },
           "then": {
-            "required": ["protocolNumber"],
-            "not": { "anyOf": [ { "required": ["port"] }, { "required": ["sourcePort"] }, { "required": ["icmpType"] }, { "required": ["icmpCode"] } ] }
+            "required": [
+              "protocolNumber"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "port"
+                  ]
+                },
+                {
+                  "required": [
+                    "icmpType"
+                  ]
+                },
+                {
+                  "required": [
+                    "icmpCode"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "protocol": {
+                "const": "any"
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "port"
+                  ]
+                },
+                {
+                  "required": [
+                    "icmpType"
+                  ]
+                },
+                {
+                  "required": [
+                    "icmpCode"
+                  ]
+                },
+                {
+                  "required": [
+                    "protocolNumber"
+                  ]
+                }
+              ]
+            }
           }
         }
       ]

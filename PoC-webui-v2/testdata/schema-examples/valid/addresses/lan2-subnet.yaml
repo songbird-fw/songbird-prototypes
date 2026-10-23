@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=../../../songbird.schema.json
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Address"
+metadata:
+  name: "lan2-subnet"
+  color: "blue"
+spec:
+  interface: "lan2"
+  subnet: "192.168.2.0/24"

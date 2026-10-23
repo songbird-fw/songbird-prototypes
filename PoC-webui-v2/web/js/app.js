@@ -10,21 +10,24 @@ import diagnostics from './pages/diagnostics.js';
 import audit from './pages/audit.js';
 import users from './pages/users.js';
 
+// Every page is a sheet of the drawing set: M = monitor, C = configuration,
+// A = administration. The code is shown in the hover label and above the title.
 const ROUTES = [
   { group: 'Monitor' },
-  { path: 'dashboard', label: 'Dashboard', icon: 'gauge', page: dashboard },
-  { path: 'traffic', label: 'Live traffic', icon: 'activity', page: traffic },
-  { path: 'diagnostics', label: 'Diagnostics', icon: 'heart', page: diagnostics },
+  { path: 'dashboard', code: 'M-01', label: 'Dashboard', icon: 'gauge', page: dashboard },
+  { path: 'traffic', code: 'M-02', label: 'Live traffic', icon: 'activity', page: traffic },
+  { path: 'diagnostics', code: 'M-03', label: 'Diagnostics', icon: 'heart', page: diagnostics },
   { group: 'Configuration' },
-  { path: 'policies', label: 'Policies', icon: 'shield', page: policies },
-  { path: 'network', label: 'Network', icon: 'network', page: network },
-  { path: 'objects', label: 'Objects', icon: 'box', page: objects },
-  { path: 'system', label: 'System', icon: 'cog', page: system },
-  { path: 'changes', label: 'Changes', icon: 'history', page: changes },
+  { path: 'policies', code: 'C-01', label: 'Policies', icon: 'shield', page: policies },
+  { path: 'network', code: 'C-02', label: 'Network', icon: 'network', page: network },
+  { path: 'objects', code: 'C-03', label: 'Objects', icon: 'box', page: objects },
+  { path: 'system', code: 'C-04', label: 'System', icon: 'cog', page: system },
+  { path: 'changes', code: 'C-05', label: 'Changes', icon: 'history', page: changes },
   { group: 'Administration' },
-  { path: 'users', label: 'Users', icon: 'users', page: users },
-  { path: 'audit', label: 'Audit log', icon: 'file', page: audit },
+  { path: 'users', code: 'A-01', label: 'Users', icon: 'users', page: users },
+  { path: 'audit', code: 'A-02', label: 'Audit log', icon: 'file', page: audit },
 ];
+const groupOf = (r) => { let g = ''; for (const x of ROUTES) { if (x.group) g = x.group; if (x === r) return g; } return g; };
 
 const app = document.getElementById('app');
 let current = null;     // current route
@@ -60,7 +63,7 @@ function loginPage() {
   const user = h('input', { autocomplete: 'username', value: '' });
   const pass = h('input', { type: 'password', autocomplete: 'current-password' });
   const err = h('div', { class: 'err', style: { color: 'var(--critical)', minHeight: '18px', fontSize: '13px' }, role: 'alert' });
-  const btn = h('button', { class: 'primary', type: 'submit', style: { justifyContent: 'center' } }, 'Sign in');
+  const btn = h('button', { class: 'primary', type: 'submit', style: { justifyContent: 'center', minHeight: '38px' } }, 'Sign in');
   const form = h('form', { class: 'card', onsubmit: async (e) => {
     e.preventDefault(); btn.disabled = true; err.textContent = '';
     try {
@@ -72,7 +75,7 @@ function loginPage() {
       btn.disabled = false; pass.select();
     }
   } },
-  h('div', { class: 'brand', style: { padding: 0 } }, h('span', { class: 'logo' }, icon('shield')), h('div', null, 'Songbird', h('small', null, 'Web UI proof of concept'))),
+  h('div', { class: 'title' }, h('span', { class: 'logo' }, icon('shield')), h('h1', null, 'Songbird', h('small', null, 'Web UI proof of concept · schema v1alpha1'))),
   h('div', { class: 'field' }, h('label', null, 'Username'), user),
   h('div', { class: 'field' }, h('label', null, 'Password'), pass),
   err, btn,
@@ -86,15 +89,23 @@ function shell() {
   content = h('div', { class: 'content' });
   banner = h('div');
   topStatus = h('div', { class: 'top' });
+  // icons only; the label appears on hover and keyboard focus
   const nav = h('nav', { class: 'nav', 'aria-label': 'Main' }, ROUTES.map((r) => r.group
-    ? h('div', { class: 'group' }, r.group)
-    : h('a', { href: `#/${r.path}`, 'data-path': r.path }, icon(r.icon), r.label)));
+    ? h('div', { class: 'group', role: 'separator', 'aria-label': r.group })
+    : h('a', { href: `#/${r.path}`, 'data-path': r.path, 'aria-label': r.label },
+      icon(r.icon), h('span', { class: 'label', 'aria-hidden': 'true' }, h('span', { class: 'code' }, r.code), r.label))));
   mount(app, h('div', { class: 'shell' },
     h('aside', { class: 'side' },
-      h('div', { class: 'brand' }, h('span', { class: 'logo' }, icon('shield')), h('div', null, 'Songbird', h('small', null, 'firewall · PoC'))),
+      h('a', { class: 'brand', href: '#/dashboard', 'aria-label': 'Songbird', title: 'Songbird — configuration is YAML in Git, every save is a commit' }, h('span', { class: 'logo' }, icon('shield'))),
       nav,
-      h('div', { class: 'foot' }, 'Config is YAML in Git', h('br'), h('code', null, 'config.songbird-fw.com/v1alpha1'), h('br'), 'Every save is a commit.')),
+      h('div', { class: 'foot', title: 'config.songbird-fw.com/v1alpha1' }, 'v1', h('br'), 'alpha1')),
     h('div', { class: 'main' }, topStatus, banner, content)));
+}
+
+// The sheet number above the title of every page (title block).
+function decorate(r) {
+  const head = content?.querySelector('.page-head > div');
+  if (head && !head.querySelector('.sheet-no')) head.prepend(h('span', { class: 'sheet-no' }, `${r.code} · ${groupOf(r)}`));
 }
 
 function stateBadge(s) {
@@ -107,8 +118,8 @@ function stateBadge(s) {
 function findingsPill() {
   const f = findings();
   const errs = f.filter((e) => e.severity === 'error').length, warns = f.length - errs;
-  if (!f.length) return h('a', { class: 'pill', href: '#/diagnostics', title: 'HEAD passes the schema and every semantic rule' }, icon('check', 'ok-ico'), 'valid');
-  return h('a', { class: 'pill', href: '#/diagnostics', title: 'Validator findings on HEAD' },
+  if (!f.length) return h('a', { class: 'pill', href: '#/diagnostics', title: 'HEAD passes the schema and every semantic rule' }, h('span', { class: 'k' }, 'Validator'), icon('check', 'ok-ico'), 'valid');
+  return h('a', { class: 'pill', href: '#/diagnostics', title: 'Validator findings on HEAD' }, h('span', { class: 'k' }, 'Validator'),
     errs ? h('span', { class: 'badge bad' }, `${errs} error${errs > 1 ? 's' : ''}`) : null,
     warns ? h('span', { class: 'badge warn' }, `${warns} warning${warns > 1 ? 's' : ''}`) : null);
 }
@@ -117,12 +128,12 @@ function renderTop() {
   if (!topStatus) return;
   const s = state.status;
   mount(topStatus,
-    h('span', { class: 'pill', title: 'Desired state: HEAD of the configuration repository' }, 'Revision', h('code', null, short(state.config?.revision))),
-    stateBadge(s),
-    s && s.appliedCommit && s.appliedCommit !== s.desiredCommit && h('span', { class: 'pill' }, 'Running', h('code', null, short(s.appliedCommit))),
+    h('span', { class: 'pill', title: 'Desired state: HEAD of the configuration repository' }, h('span', { class: 'k' }, 'Revision'), h('code', null, short(state.config?.revision))),
+    h('span', { class: 'pill' }, h('span', { class: 'k' }, 'Reconciler'), stateBadge(s)),
+    s && s.appliedCommit && s.appliedCommit !== s.desiredCommit && h('span', { class: 'pill' }, h('span', { class: 'k' }, 'Running'), h('code', null, short(s.appliedCommit))),
     findingsPill(),
     h('span', { class: 'spacer' }),
-    h('span', { class: 'pill' }, icon('users'), state.me?.u, h('span', { class: 'muted' }, state.me?.r)),
+    h('span', { class: 'pill' }, h('span', { class: 'k' }, state.me?.r), state.me?.u),
     h('button', { class: 'ghost', onclick: toggleTheme, title: 'Toggle dark theme', 'aria-label': 'Toggle dark theme' }, icon(effectiveTheme() === 'dark' ? 'sun' : 'moon')),
     h('button', { class: 'ghost', title: 'Sign out', 'aria-label': 'Sign out', onclick: async () => { await api('POST', '/api/v1/logout').catch(() => {}); state.me = null; stop(); location.hash = '#/login'; } }, icon('logout')));
 
@@ -152,6 +163,7 @@ function route() {
   current = r;
   document.title = `${r.label} · Songbird`;
   leave = r.page.render(content, rest) || null;
+  decorate(r);
   renderTop();
 }
 
@@ -170,7 +182,13 @@ async function poll() {
   } catch { /* 401 handled in api() */ }
 }
 
-function rerender() { if (current && !document.querySelector('.overlay')) { if (leave) leave(); leave = current.page.render(content, location.hash.split('/').slice(2)) || null; } }
+function rerender() {
+  if (current && !document.querySelector('.overlay')) {
+    if (leave) leave();
+    leave = current.page.render(content, location.hash.split('/').slice(2)) || null;
+    decorate(current);
+  }
+}
 
 // after any config reload, re-render the page (deferred so a dialog that
 // is closing after a save is gone first)

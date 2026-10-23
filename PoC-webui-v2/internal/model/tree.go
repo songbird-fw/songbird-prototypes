@@ -12,27 +12,26 @@ import (
 // Kind describes one object kind: its repository directory and namespace.
 type Kind struct {
 	Name      string
-	Dir       string // repository directory, one file per object
+	Dir       string // repository directory, one file per object ("" = the root)
 	Namespace string // names are unique within a namespace (DM-01)
-	Extension bool   // not in songbird-yaml-schema v1alpha1 (PoC proposal)
+	Extension bool   // not in the v1alpha1 schema (PoC proposal)
 }
 
-// Kinds in dependency order. The layout groups kinds like the schema
-// examples (network/, objects/, firewall/, system/), one object per file
-// (schema open question 3; the PoC picks one-per-file for clean diffs and
-// per-file optimistic locking).
+// Kinds in dependency order. The directories are the canonical export
+// layout of the schema (design decision 14): system.yaml at the root and one
+// kebab-case plural directory per kind, file name = metadata.name. The two
+// PoC extension kinds follow the same convention.
 var Kinds = []Kind{
-	{"System", "system", "system", false},
-	{"Color", "objects/colors", "color", false},
-	{"Interface", "network/interfaces", "network", false},
-	{"Zone", "network/zones", "network", false},
-	{"StaticRoute", "network/routes", "route", true},
-	{"DhcpServer", "network/dhcp", "dhcp", true},
-	{"Address", "objects/addresses", "address", false},
-	{"AddressGroup", "objects/addressgroups", "address", false},
-	{"Service", "objects/services", "service", false},
-	{"ServiceGroup", "objects/servicegroups", "service", false},
-	{"RuleSet", "firewall/rulesets", "ruleset", false},
+	{"System", "", "system", false},
+	{"Color", "colors", "color", false},
+	{"Interface", "interfaces", "network", false},
+	{"Zone", "zones", "network", false},
+	{"StaticRoute", "static-routes", "route", true},
+	{"Address", "addresses", "address", false},
+	{"AddressGroup", "address-groups", "address", false},
+	{"Service", "services", "service", false},
+	{"ServiceGroup", "service-groups", "service", false},
+	{"RuleSet", "rulesets", "ruleset", false},
 	{"User", "users", "user", true},
 }
 
@@ -50,6 +49,9 @@ func FilePath(kind, name string) string {
 	k, ok := KindByName(kind)
 	if !ok {
 		return kind + "/" + name + ".yaml"
+	}
+	if k.Dir == "" {
+		return name + ".yaml"
 	}
 	return k.Dir + "/" + name + ".yaml"
 }
@@ -70,7 +72,6 @@ type Tree struct {
 	Interfaces    List[InterfaceSpec]   `json:"Interface"`
 	Zones         List[ZoneSpec]        `json:"Zone"`
 	StaticRoutes  List[StaticRouteSpec] `json:"StaticRoute"`
-	DhcpServers   List[DhcpServerSpec]  `json:"DhcpServer"`
 	Addresses     List[AddressSpec]     `json:"Address"`
 	AddressGroups List[GroupSpec]       `json:"AddressGroup"`
 	Services      List[ServiceSpec]     `json:"Service"`
@@ -218,8 +219,6 @@ func (t *Tree) list(kind string) anyList {
 		return &t.Zones
 	case "StaticRoute":
 		return &t.StaticRoutes
-	case "DhcpServer":
-		return &t.DhcpServers
 	case "Address":
 		return &t.Addresses
 	case "AddressGroup":
@@ -394,53 +393,107 @@ func (t *Tree) Side(ref string) []string {
 	return nil
 }
 
-// ExpandAddresses resolves an address reference to its Addresses,
-// following nested groups (cycles are cut; the Validator reports them).
+// ExpandAddresses resolves an address reference to its Addresses. Groups
+// are flat (DM-15): a member that is not an Address is skipped (the
+// Validator reports it as wrong-kind).
 func (t *Tree) ExpandAddresses(ref string) []Address {
+	if a, ok := t.Address(ref); ok {
+		return []Address{a}
+	}
 	var out []Address
-	seen := map[string]bool{}
-	var walk func(string)
-	walk = func(n string) {
-		if seen[n] {
-			return
-		}
-		seen[n] = true
-		if a, ok := t.Address(n); ok {
-			out = append(out, a)
-			return
-		}
-		if g, ok := t.AddressGroup(n); ok {
-			for _, m := range g.Spec.Members {
-				walk(m)
+	if g, ok := t.AddressGroup(ref); ok {
+		for _, n := range g.Spec.Members {
+			if a, ok := t.Address(n); ok {
+				out = append(out, a)
 			}
 		}
 	}
-	walk(ref)
 	return out
 }
 
-// ExpandServices resolves a service reference to its Services.
+// ExpandServices resolves a service reference to its Services (flat, DM-18).
 func (t *Tree) ExpandServices(ref string) []Service {
+	if s, ok := t.Service(ref); ok {
+		return []Service{s}
+	}
 	var out []Service
-	seen := map[string]bool{}
-	var walk func(string)
-	walk = func(n string) {
-		if seen[n] {
-			return
-		}
-		seen[n] = true
-		if s, ok := t.Service(n); ok {
-			out = append(out, s)
-			return
-		}
-		if g, ok := t.ServiceGroup(n); ok {
-			for _, m := range g.Spec.Members {
-				walk(m)
+	if g, ok := t.ServiceGroup(ref); ok {
+		for _, n := range g.Spec.Members {
+			if s, ok := t.Service(n); ok {
+				out = append(out, s)
 			}
 		}
 	}
-	walk(ref)
 	return out
+}
+
+// AnyAddress reports whether a source or destination list contains a
+// predefined Address (any = 0.0.0.0/0, any6 = ::/0): "any" is an ordinary
+// reference to a shipped object, not a keyword (DM-21).
+func (t *Tree) AnyAddress(refs []string) bool {
+	for _, r := range refs {
+		if a, ok := t.Address(r); ok && a.Spec.Predefined {
+			return true
+		}
+	}
+	return false
+}
+
+// AnyService reports whether a service list contains the predefined
+// Service any (every protocol and port).
+func (t *Tree) AnyService(refs []string) bool {
+	for _, r := range refs {
+		if s, ok := t.Service(r); ok && s.Spec.Predefined {
+			return true
+		}
+	}
+	return false
+}
+
+// Applicable returns the RuleSets that govern a Flow entering Interface in
+// and leaving through Interface out, in evaluation order (DM-42): in → out,
+// in → Zone(out), Zone(in) → out, Zone(in) → Zone(out), skipping those that
+// do not exist. Traffic that leaves through the Interface it entered is
+// never governed by a RuleSet.
+func (t *Tree) Applicable(in, out string) []RuleSet {
+	if in == out {
+		return nil
+	}
+	zi, zo := t.ZoneOf(in), t.ZoneOf(out)
+	var out2 []RuleSet
+	seen := map[string]bool{}
+	for _, p := range [][2]string{{in, out}, {in, zo}, {zi, out}, {zi, zo}} {
+		if p[0] == "" || p[1] == "" || p[0] == p[1] {
+			continue
+		}
+		for _, rs := range t.RuleSets {
+			if rs.Spec.From == p[0] && rs.Spec.To == p[1] && !seen[rs.Metadata.Name] {
+				seen[rs.Metadata.Name] = true
+				out2 = append(out2, rs)
+			}
+		}
+	}
+	return out2
+}
+
+// Uplink reports whether an Interface carries a default route: an IPv4
+// gateway, a DHCP client, or a StaticRoute 0.0.0.0/0 through it. The PoC
+// uses it only to simulate Internet traffic (the schema has no Interface
+// role, design decision 11).
+func (t *Tree) Uplink(name string) bool {
+	i, ok := t.Interface(name)
+	if !ok {
+		return false
+	}
+	if v4 := i.Spec.IPv4; v4 != nil && (v4.Gateway != "" || v4.Mode == "dhcp") {
+		return true
+	}
+	for _, r := range t.StaticRoutes {
+		if r.Spec.Interface == name && r.Spec.Destination == "0.0.0.0/0" {
+			return true
+		}
+	}
+	return false
 }
 
 // AssignUUIDs gives a uuid to every object and rule that has none, keeping
@@ -499,9 +552,6 @@ func setUUID(o, prev Doc) Doc {
 		x.Metadata.UUID = keepUUID(x.Metadata.UUID, pm.UUID)
 		return x
 	case StaticRoute:
-		x.Metadata.UUID = keepUUID(x.Metadata.UUID, pm.UUID)
-		return x
-	case DhcpServer:
 		x.Metadata.UUID = keepUUID(x.Metadata.UUID, pm.UUID)
 		return x
 	case Address:

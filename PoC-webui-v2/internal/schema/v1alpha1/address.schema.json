@@ -2,14 +2,25 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://config.songbird-fw.com/v1alpha1/address.schema.json",
   "title": "Address",
-  "description": "A named network address object (R-012). Exactly one of subnet, range, fqdn, mac must be set.",
+  "description": "A named network address object (R-012). Exactly one of subnet, range, fqdn, mac must be set. A single host is a /32 or /128 subnet. The predefined Addresses 'any' (0.0.0.0/0) and 'any6' (::/0) ship with every configuration (R-012.1) and carry predefined: true; their spec is immutable (validator check).",
   "type": "object",
   "additionalProperties": false,
-  "required": ["apiVersion", "kind", "metadata", "spec"],
+  "required": [
+    "apiVersion",
+    "kind",
+    "metadata",
+    "spec"
+  ],
   "properties": {
-    "apiVersion": { "$ref": "common.schema.json#/$defs/apiVersion" },
-    "kind": { "const": "Address" },
-    "metadata": { "$ref": "common.schema.json#/$defs/metadata" },
+    "apiVersion": {
+      "$ref": "common.schema.json#/$defs/apiVersion"
+    },
+    "kind": {
+      "const": "Address"
+    },
+    "metadata": {
+      "$ref": "common.schema.json#/$defs/metadata"
+    },
     "spec": {
       "type": "object",
       "additionalProperties": false,
@@ -18,14 +29,23 @@
           "description": "Optional hint restricting where this Address is expected to appear (used by the UI and by DHCP static bindings). Not a match criterion in Policies.",
           "$ref": "common.schema.json#/$defs/reference"
         },
-        "subnet": { "$ref": "common.schema.json#/$defs/cidr" },
+        "subnet": {
+          "$ref": "common.schema.json#/$defs/cidr"
+        },
         "range": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["start", "end"],
+          "required": [
+            "start",
+            "end"
+          ],
           "properties": {
-            "start": { "$ref": "common.schema.json#/$defs/ipAddress" },
-            "end":   { "$ref": "common.schema.json#/$defs/ipAddress" }
+            "start": {
+              "$ref": "common.schema.json#/$defs/ipAddress"
+            },
+            "end": {
+              "$ref": "common.schema.json#/$defs/ipAddress"
+            }
           }
         },
         "fqdn": {
@@ -35,13 +55,34 @@
         "mac": {
           "description": "Matches on source MAC only; valid only as Source in Policies whose incoming side is a directly attached Interface.",
           "$ref": "common.schema.json#/$defs/macAddress"
+        },
+        "predefined": {
+          "description": "True only for the shipped objects any / any6.",
+          "type": "boolean",
+          "default": false
         }
       },
       "oneOf": [
-        { "required": ["subnet"] },
-        { "required": ["range"] },
-        { "required": ["fqdn"] },
-        { "required": ["mac"] }
+        {
+          "required": [
+            "subnet"
+          ]
+        },
+        {
+          "required": [
+            "range"
+          ]
+        },
+        {
+          "required": [
+            "fqdn"
+          ]
+        },
+        {
+          "required": [
+            "mac"
+          ]
+        }
       ]
     }
   }

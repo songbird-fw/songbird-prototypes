@@ -15,7 +15,7 @@ const addrOptions = () => [...objs('Address').map((a) => ({ value: a.metadata.na
 function editSystem(o) {
   objectForm({
     kind: 'System', obj: o, title: 'System settings',
-    intro: h('p', { class: 'sub small', style: { margin: 0 } }, 'The main settings. Certificates, syslog, GitOps, updates and the other sections are edited in YAML.'),
+    intro: h('p', { class: 'sub small', style: { margin: 0 } }, 'The main settings. DHCP pools are edited in Network → DHCP; certificates, syslog, GitOps, updates and the other sections in YAML.'),
     fields: [
       { key: 'spec.hostname', label: 'Hostname', required: true, placeholder: 'fw01.example.lan' },
       { key: 'spec.timezone', label: 'Time zone', placeholder: 'UTC', help: 'IANA name, e.g. Europe/Rome' },
@@ -25,14 +25,15 @@ function editSystem(o) {
       { key: 'spec.admin.lockout.duration', label: 'Lockout duration', placeholder: '10m' },
       { key: 'spec.admin.trustedHosts', label: 'Trusted hosts for the UI', type: 'multi', options: addrOptions, placeholder: 'any address…', full: true,
         help: 'Empty = any address on Interfaces that allow https' },
-      { key: 'spec.dns.mode', label: 'DNS server mode', type: 'select', options: [{ value: '', label: '— not configured —' }, 'forwarder', 'recursive'], rerender: true, help: 'R-018.1, R-018.3' },
-      { key: 'spec.dns.localDomain', label: 'Local domain', show: (s) => !!s.spec.dns?.mode, placeholder: 'example.lan' },
-      { key: 'spec.dns.upstreams', label: 'Upstream DNS servers', type: 'textarea', show: (s) => s.spec.dns?.mode === 'forwarder', format: lines, parse: splitLines, required: true,
+      { key: 'spec.systemServices.dns.mode', label: 'DNS server mode', type: 'select', options: [{ value: '', label: '— not configured —' }, 'forwarder', 'recursive'], rerender: true, help: 'R-018.1, R-018.3' },
+      { key: 'spec.systemServices.dns.localDomain', label: 'Local domain', show: (s) => !!s.spec.systemServices?.dns?.mode, placeholder: 'example.lan' },
+      { key: 'spec.systemServices.dns.upstreams', label: 'Upstream DNS servers', type: 'textarea', show: (s) => s.spec.systemServices?.dns?.mode === 'forwarder', format: lines, parse: splitLines, required: true,
         help: 'In order: the first is primary; failover after 3 timeouts (R-034)' },
-      { key: 'spec.dns.serveToInterfaces', label: 'DNS served to', type: 'multi', show: (s) => !!s.spec.dns?.mode, options: netOptions, placeholder: 'add…', help: 'Opens UDP/TCP 53 there (DM-34)' },
-      { key: 'spec.ntp.enabled', label: 'NTP', type: 'checkbox', checkLabel: 'Synchronise the clock', rerender: true },
-      { key: 'spec.ntp.servers', label: 'NTP servers', type: 'textarea', show: (s) => s.spec.ntp?.enabled, format: lines, parse: splitLines, placeholder: 'pool.ntp.org' },
-      { key: 'spec.ntp.serveToInterfaces', label: 'NTP served to', type: 'multi', show: (s) => s.spec.ntp?.enabled, options: netOptions, placeholder: 'add…' },
+      { key: 'spec.systemServices.dns.listenOn', label: 'DNS listens on', type: 'multi', show: (s) => !!s.spec.systemServices?.dns?.mode, options: netOptions, placeholder: 'add…',
+        help: 'Interfaces or Zones; opens UDP/TCP 53 there without a Policy (DM-34, DM-45)' },
+      { key: 'spec.systemServices.ntp.enabled', label: 'NTP', type: 'checkbox', checkLabel: 'Synchronise the clock', rerender: true },
+      { key: 'spec.systemServices.ntp.servers', label: 'NTP servers', type: 'textarea', show: (s) => s.spec.systemServices?.ntp?.enabled, format: lines, parse: splitLines, placeholder: 'pool.ntp.org' },
+      { key: 'spec.systemServices.ntp.listenOn', label: 'NTP listens on', type: 'multi', show: (s) => s.spec.systemServices?.ntp?.enabled, options: netOptions, placeholder: 'add…', help: 'Opens UDP 123 there (DM-34)' },
       { key: 'spec.logging.rotation.retentionDays', label: 'Traffic Log retention (days)', type: 'number', placeholder: '30', help: 'R-029' },
       { key: 'spec.logging.anonymizeSourceIp.enabled', label: 'Pseudonymise source addresses', type: 'checkbox', checkLabel: 'In the Traffic Log (GDPR, R-037)', rerender: true },
       { key: 'spec.logging.anonymizeSourceIp.interfaces', label: 'Only on', type: 'multi', show: (s) => s.spec.logging?.anonymizeSourceIp?.enabled,
@@ -55,9 +56,11 @@ export default {
     if (!o) { mount(root, h('div', { class: 'card empty' }, 'No System object: the configuration is invalid (system-missing).')); return; }
     const s = o.spec;
     const a = s.admin || {};
+    const ss = s.systemServices || {};
+    const pools = Object.entries(ss.dhcp || {});
     mount(root,
       h('div', { class: 'page-head' },
-        h('div', null, h('h1', null, 'System'), h('p', null, 'Global settings: one System object, named "system", in system/system.yaml.')),
+        h('div', null, h('h1', null, 'System'), h('p', null, 'Global settings: one System object, named "system", in system.yaml at the root of the repository.')),
         h('span', { class: 'spacer' }), findingBadge('System', 'system'),
         h('button', { class: 'ghost', onclick: () => showYAML('System', 'system') }, icon('code'), 'YAML'),
         isAdmin() && h('button', { onclick: () => yamlEditor('System', 'system') }, icon('edit'), 'Edit YAML'),
@@ -70,12 +73,14 @@ export default {
           ['Trusted hosts', chips(a.trustedHosts) || 'any address on Interfaces with https'],
           ['Certificate', a.certificate?.mode || 'self-signed'], ['UI theme', a.ui?.theme || 'auto'],
         ]), 'per Interface: Network → allowAccess'),
-        card('DNS', s.dns ? kv([
-          ['Mode', s.dns.mode], s.dns.mode === 'forwarder' && ['Upstreams', h('span', { class: 'mono' }, (s.dns.upstreams || []).join(', '))],
-          ['Local domain', s.dns.localDomain], ['Local records', (s.dns.localRecords || []).length ? h('div', null, s.dns.localRecords.map((r) => h('div', { class: 'mono small' }, `${r.name} → ${r.address}`))) : null],
-          ['Served to', chips(s.dns.serveToInterfaces)], s.dns.dns64 && ['DNS64', h('span', { class: 'badge outline' }, 'on (IPv6 deferred)')],
-        ]) : h('div', { class: 'muted' }, 'Not configured.'), 'R-018'),
-        card('NTP', kv([['Enabled', yes(s.ntp?.enabled)], ['Servers', s.ntp?.servers?.join(', ')], ['Served to', chips(s.ntp?.serveToInterfaces)]])),
+        card('DNS server', ss.dns ? kv([
+          ['Mode', ss.dns.mode], ss.dns.mode === 'forwarder' && ['Upstreams', h('span', { class: 'mono' }, (ss.dns.upstreams || []).join(', '))],
+          ['Local domain', ss.dns.localDomain], ['Local records', (ss.dns.localRecords || []).length ? h('div', null, ss.dns.localRecords.map((r) => h('div', { class: 'mono small' }, `${r.name} → ${r.address}`))) : null],
+          ['Listens on', chips(ss.dns.listenOn)], ss.dns.dns64 && ['DNS64', h('span', { class: 'badge outline' }, 'on (IPv6 deferred)')],
+        ]) : h('div', { class: 'muted' }, 'Not configured.'), 'System Service · R-018'),
+        card('NTP', kv([['Enabled', yes(ss.ntp?.enabled)], ['Servers', ss.ntp?.servers?.join(', ')], ['Listens on', chips(ss.ntp?.listenOn)]]), 'System Service'),
+        card('DHCP server', pools.length ? kv(pools.map(([n, p]) => [n, h('span', null, h('span', { class: 'mono' }, `${p.range.start} – ${p.range.end}`), ' ', p.enabled === false ? h('span', { class: 'badge' }, 'off') : null)]))
+          : h('div', { class: 'muted' }, 'No pools.'), h('a', { href: '#/network/dhcp' }, 'Network → DHCP')),
         card('Logging', kv([
           ['Retention', `${s.logging?.rotation?.retentionDays || 30} days, ${s.logging?.rotation?.maxFileSizeMb || 100} MB per file`],
           ['Pseudonymise source IP', s.logging?.anonymizeSourceIp?.enabled ? h('span', null, yes(true), ' ', (s.logging.anonymizeSourceIp.interfaces || []).join(', ') || 'everywhere') : yes(false)],

@@ -1,0 +1,4 @@
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Service"
+metadata: { name: "https" }
+spec: { protocols: [{ protocol: "tcp", port: 443 }] }

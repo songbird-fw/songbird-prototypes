@@ -1,17 +1,14 @@
-// Package model holds the configuration objects of songbird-yaml-schema
-// v1alpha1 (domain-model.md v0.6). Every object is a document with
+// Package model holds the configuration objects of the v1alpha1 schema in
+// songbird-fw/schema (domain-model.md v0.7). Every object is a document with
 // apiVersion, kind, metadata and spec; the Go types mirror the JSON Schema
 // one field per property, so a file read and written back is unchanged.
 //
-// Three kinds are not in v1alpha1 yet ("Not covered yet" in the schema
-// README): StaticRoute, DhcpServer and User. The PoC defines them as
-// proposals with their own schema (internal/schema/ext).
+// Two kinds are not in v1alpha1 yet ("Not covered yet" in the schema
+// README): StaticRoute and User. The PoC defines them as proposals with
+// their own schema (internal/schema/ext).
 package model
 
 const APIVersion = "config.songbird-fw.com/v1alpha1"
-
-// Any is the wildcard of Policy source, destination and service: ["any"].
-const Any = "any"
 
 // Meta is common.schema.json#/$defs/metadata.
 type Meta struct {
@@ -46,21 +43,12 @@ type InterfaceSpec struct {
 	VlanID      int         `yaml:"vlanId,omitempty" json:"vlanId,omitempty"`
 	Enabled     *bool       `yaml:"enabled,omitempty" json:"enabled,omitempty"`
 	MTU         int         `yaml:"mtu,omitempty" json:"mtu,omitempty"`
-	Role        string      `yaml:"role,omitempty" json:"role,omitempty"` // internal (default), external, dmz, transit
-	AllowAccess []string    `yaml:"allowAccess,omitempty" json:"allowAccess,omitempty"`
+	AllowAccess []string    `yaml:"allowAccess,omitempty" json:"allowAccess,omitempty"` // https, ping, ssh
 	IPv4        *IPv4Config `yaml:"ipv4,omitempty" json:"ipv4,omitempty"`
 	IPv6        *IPv6Config `yaml:"ipv6,omitempty" json:"ipv6,omitempty"`
 }
 
 func (s InterfaceSpec) IsEnabled() bool { return s.Enabled == nil || *s.Enabled }
-
-// EffectiveRole applies the schema default.
-func (s InterfaceSpec) EffectiveRole() string {
-	if s.Role == "" {
-		return "internal"
-	}
-	return s.Role
-}
 
 // StaticAddresses are the IPv4 prefixes of a static Interface.
 func (s InterfaceSpec) StaticAddresses() []string {
@@ -99,11 +87,12 @@ type ZoneSpec struct {
 
 // AddressSpec has exactly one of Subnet, Range, FQDN, MAC (schema oneOf).
 type AddressSpec struct {
-	Interface string        `yaml:"interface,omitempty" json:"interface,omitempty"`
-	Subnet    string        `yaml:"subnet,omitempty" json:"subnet,omitempty"`
-	Range     *AddressRange `yaml:"range,omitempty" json:"range,omitempty"`
-	FQDN      string        `yaml:"fqdn,omitempty" json:"fqdn,omitempty"`
-	MAC       string        `yaml:"mac,omitempty" json:"mac,omitempty"`
+	Interface  string        `yaml:"interface,omitempty" json:"interface,omitempty"`
+	Subnet     string        `yaml:"subnet,omitempty" json:"subnet,omitempty"`
+	Range      *AddressRange `yaml:"range,omitempty" json:"range,omitempty"`
+	FQDN       string        `yaml:"fqdn,omitempty" json:"fqdn,omitempty"`
+	MAC        string        `yaml:"mac,omitempty" json:"mac,omitempty"`
+	Predefined bool          `yaml:"predefined,omitempty" json:"predefined,omitempty"` // only any, any6 (DM-21)
 }
 
 type AddressRange struct {
@@ -146,13 +135,13 @@ type GroupSpec struct {
 }
 
 type ServiceSpec struct {
-	Protocols []ProtocolEntry `yaml:"protocols" json:"protocols"`
+	Protocols  []ProtocolEntry `yaml:"protocols" json:"protocols"`
+	Predefined bool            `yaml:"predefined,omitempty" json:"predefined,omitempty"` // only Service any (DM-21)
 }
 
 type ProtocolEntry struct {
-	Protocol       string     `yaml:"protocol" json:"protocol"` // tcp, udp, sctp, icmp, icmpv6, ip
+	Protocol       string     `yaml:"protocol" json:"protocol"` // tcp, udp, sctp, icmp, icmpv6, ip; any only in Service any
 	Port           *PortRange `yaml:"port,omitempty" json:"port,omitempty"`
-	SourcePort     *PortRange `yaml:"sourcePort,omitempty" json:"sourcePort,omitempty"`
 	ICMPType       *int       `yaml:"icmpType,omitempty" json:"icmpType,omitempty"`
 	ICMPCode       *int       `yaml:"icmpCode,omitempty" json:"icmpCode,omitempty"`
 	ProtocolNumber *int       `yaml:"protocolNumber,omitempty" json:"protocolNumber,omitempty"`
@@ -189,9 +178,6 @@ type Nat struct {
 	TranslateServiceTo string `yaml:"translateServiceTo,omitempty" json:"translateServiceTo,omitempty"`
 }
 
-// IsAny reports whether a source/destination/service list is ["any"].
-func IsAny(l []string) bool { return len(l) == 1 && l[0] == Any }
-
 // ---- PoC extensions (not in v1alpha1) ----------------------------------------------------------
 
 // StaticRouteSpec follows domain-model.md (StaticRoute, DM-22, DM-23).
@@ -219,26 +205,6 @@ func (s StaticRouteSpec) Preference() (int, int) {
 	return d, p
 }
 
-// DhcpServerSpec is the domain model's DhcpConfig (DM-24 … DM-29) as a kind
-// of its own, as the schema README suggests ("DhcpServer"), so that the
-// Interface stays exactly as in v1alpha1.
-type DhcpServerSpec struct {
-	Interface    string            `yaml:"interface" json:"interface"`
-	Enabled      bool              `yaml:"enabled" json:"enabled"`
-	RangeStart   string            `yaml:"rangeStart" json:"rangeStart"`
-	RangeEnd     string            `yaml:"rangeEnd" json:"rangeEnd"`
-	Gateway      string            `yaml:"gateway,omitempty" json:"gateway,omitempty"`
-	DNSServers   []string          `yaml:"dnsServers,omitempty" json:"dnsServers,omitempty"`
-	LeaseTime    string            `yaml:"leaseTime,omitempty" json:"leaseTime,omitempty"` // duration, default 24h
-	Reservations []DhcpReservation `yaml:"reservations,omitempty" json:"reservations,omitempty"`
-}
-
-type DhcpReservation struct {
-	MAC  string `yaml:"mac" json:"mac"`
-	IP   string `yaml:"ip" json:"ip"`
-	Host string `yaml:"host,omitempty" json:"host,omitempty"`
-}
-
 // UserSpec: Users and Roles are configuration (components.md, Auth).
 type UserSpec struct {
 	Role         string `yaml:"role" json:"role"` // admin, read-only
@@ -256,6 +222,5 @@ type (
 	ServiceGroup = Object[GroupSpec]
 	RuleSet      = Object[RuleSetSpec]
 	StaticRoute  = Object[StaticRouteSpec]
-	DhcpServer   = Object[DhcpServerSpec]
 	User         = Object[UserSpec]
 )

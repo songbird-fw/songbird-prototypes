@@ -6,7 +6,7 @@ Proofs of concept for Songbird. A prototype is an **experiment that answers one 
 
 | Prototype | Question | Status | Result / decisions |
 |---|---|---|---|
-| [PoC-webui-v2](PoC-webui-v2) | Does the designed Control Plane work end to end behind a real UI? | **Active** | Works with simulated drivers; to align with domain model v0.6 |
+| [PoC-webui-v2](PoC-webui-v2) | Does the designed Control Plane work end to end behind a real UI? | **Active** | Works end to end with simulated drivers on the `songbird-fw` schema v1alpha1 (2026-10-19 decisions) and domain model v0.7; 7 findings for schema, model and RA |
 | [PoC-hadron-os](PoC-hadron-os) | Can an immutable Hadron/Kairos image ship and run our eBPF binary? | **Active** | ISO builds; kernel, persistence, TPM and A/B upgrade still to verify |
 | [archive/PoC-feasibility-study](archive/PoC-feasibility-study) | Is Go suitable for the Control Plane? | Concluded | Yes → RA C-004 |
 | [archive/PoC-basic-xdp-firewall](archive/PoC-basic-xdp-firewall) | Can XDP filter with rules managed from Go? | Superseded | Yes, with the limits in `dataplane.md` §2 → new Data Plane design |

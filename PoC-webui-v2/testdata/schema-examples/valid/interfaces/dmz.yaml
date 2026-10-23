@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=../../../songbird.schema.json
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Interface"
+metadata:
+  name: "dmz"
+  color: "red"
+spec:
+  type: "vlan"
+  parent: "trunk"
+  vlanId: 30
+  allowAccess: ["ping"]
+  ipv4:
+    mode: "static"
+    addresses: ["192.168.30.1/24"]

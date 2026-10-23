@@ -1,7 +1,6 @@
 package validator_test
 
 import (
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -10,8 +9,8 @@ import (
 	"github.com/songbird-fw/songbird-prototypes/PoC-webui-v2/internal/validator"
 )
 
-// The corpus is a copy of songbird-yaml-schema/examples (commit 55e63ac):
-// it is the test corpus of `songbird validate` (schema README, R-020.2).
+// The corpus is a copy of songbird-fw/schema/examples (commit 99bfafe): it
+// is the test corpus of `songbird validate` (schema README, R-020.2).
 const corpus = "../../testdata/schema-examples"
 
 func validateDir(t *testing.T, dir string) []validator.Error {
@@ -21,26 +20,21 @@ func validateDir(t *testing.T, dir string) []validator.Error {
 	return errs
 }
 
-// TestValidExample: the 43-object example of the schema passes every rule
-// of validate.py, but breaks DM-38 / R-046.1 of the domain model: the
-// RuleSet untrusted-to-lan1 references lan1, a member of Zone internal.
-// This is a finding of the PoC, reported in the README.
+// TestValidExample: the 57-object example passes every rule of validate.py
+// and of the domain model. Since domain model 0.7 a member Interface may be
+// used next to its Zone (DM-38), so untrusted-to-lan1 is valid.
 func TestValidExample(t *testing.T) {
-	var errs []validator.Error
 	for _, e := range validateDir(t, corpus+"/valid") {
 		if e.Severity == validator.SevError {
-			errs = append(errs, e)
+			t.Error(e)
 		} else {
 			t.Log(e)
 		}
 	}
-	if len(errs) != 1 || errs[0].Rule != "zone-member" || errs[0].Constraint != "DM-38" ||
-		!strings.HasSuffix(errs[0].File, "firewall/rules.yaml") || errs[0].Path != "spec.to" || errs[0].Line == 0 {
-		t.Fatalf("expected exactly the DM-38 error on untrusted-to-lan1, got %v", errs)
-	}
 }
 
-// expected rule id of each invalid file (any of the listed ids is accepted).
+// expected rule id of each invalid case, as validate.py reports it (any of
+// the listed ids is accepted).
 var expected = map[string][]string{
 	"01-netmask-notation":                  {"schema"},
 	"02-address-two-forms":                 {"schema"},
@@ -48,9 +42,9 @@ var expected = map[string][]string{
 	"04-tcp-no-port":                       {"schema"},
 	"05-icmp-with-port":                    {"schema"},
 	"06-port-out-of-range":                 {"schema"},
-	"07-group-cycle":                       {"group-cycle"},
+	"07-nested-group":                      {"wrong-kind"},
 	"08-dangling-ref":                      {"dangling-ref"},
-	"09-ruleset-any-interface":             {"schema"},
+	"09-ruleset-wildcard-interface":        {"dangling-ref"},
 	"10-drop-with-nat":                     {"schema"},
 	"11-duplicate-pair":                    {"duplicate-pair"},
 	"12-vlan-without-parent":               {"schema"},
@@ -80,23 +74,30 @@ var expected = map[string][]string{
 	"36-system-bad-duration":               {"schema"},
 	"37-system-git-enabled-without-remote": {"schema"},
 	"38-interface-bad-allowaccess":         {"schema"},
+	"39-interface-role-removed":            {"schema"},
+	"40-predefined-any-modified":           {"predefined-immutable"},
+	"41-any-protocol-user-service":         {"any-protocol"},
+	"42-fqdn-in-enabled-rule":              {"unsupported-address-kind"},
+	"43-system-old-serveto":                {"schema"},
+	"45-service-sourceport":                {"schema"},
+	"46-dhcp-range-outside-subnet":         {"dhcp-range-subnet"},
+	"47-dhcp-advertises-silent-dns":        {"dhcp-advertises-silent-service"},
+	"48-dhcp-on-dhcp-client-interface":     {"dhcp-needs-static"},
+	"49-dhcp-unknown-interface":            {"dangling-ref"},
 }
 
 func TestInvalidExamples(t *testing.T) {
-	files, _ := filepath.Glob(corpus + "/invalid/*.yaml")
-	if len(files) != len(expected) {
-		t.Fatalf("corpus has %d files, table has %d", len(files), len(expected))
+	dirs, _ := filepath.Glob(corpus + "/invalid/*")
+	if len(dirs) != len(expected) {
+		t.Fatalf("corpus has %d cases, table has %d", len(dirs), len(expected))
 	}
-	for _, f := range files {
-		name := strings.TrimSuffix(filepath.Base(f), ".yaml")
+	for _, dir := range dirs {
+		name := filepath.Base(dir)
 		want, ok := expected[name]
 		if !ok {
 			t.Errorf("%s: not in the table", name)
 			continue
 		}
-		dir := t.TempDir() // one file per tree: each example stands alone
-		b, _ := os.ReadFile(f)
-		_ = os.WriteFile(filepath.Join(dir, "x.yaml"), b, 0o600)
 		found := false
 		var got []string
 		for _, e := range validateDir(t, dir) {
@@ -141,7 +142,7 @@ func TestCanonicalRoundTrip(t *testing.T) {
 			t.Errorf("%s/%s: string values must be double-quoted:\n%s", kind, meta.Name, b)
 		}
 	})
-	if n != 43 {
-		t.Errorf("expected 43 objects, got %d", n)
+	if n != 57 {
+		t.Errorf("expected 57 objects, got %d", n)
 	}
 }

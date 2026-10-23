@@ -60,10 +60,14 @@ func (o *Observer) sample() {
 	if t := o.Rec.AppliedTree(); t != nil {
 		for _, i := range t.Interfaces {
 			n := i.Metadata.Name
-			if len(i.Spec.StaticAddresses()) == 0 && i.Spec.EffectiveRole() != "external" {
+			up := t.Uplink(n)
+			if len(i.Spec.StaticAddresses()) == 0 && !up {
 				continue // e.g. an 802.1Q trunk: its traffic is counted on the VLANs
 			}
-			base := map[string]float64{"external": 40e6, "internal": 25e6, "dmz": 8e6, "transit": 15e6}[i.Spec.EffectiveRole()]
+			base := 20e6
+			if up {
+				base = 40e6
+			}
 			if i.Spec.Type == "vlan" {
 				base /= 2
 			}

@@ -1,9 +1,11 @@
 # One RuleSet per (from, to) pair; order = position in spec.rules, first match wins.
+# A member Interface may be used next to its Zone (DM-38): for a Flow lan2 -> wan
+# the Compiler evaluates lan2-to-untrusted first, then internal-to-untrusted (DM-42).
 apiVersion: "config.songbird-fw.com/v1alpha1"
 kind: "RuleSet"
-metadata: { name: "internal-to-untrusted", comment: "Office and servers going to the Internet", color: "blue" }
+metadata: { name: "lan2-to-untrusted", comment: "Exception for one member of internal: evaluated before internal-to-untrusted", color: "blue" }
 spec:
-  from: "internal"
+  from: "lan2"
   to: "untrusted"
   rules:
     - name: "block-printers-internet"
@@ -12,6 +14,14 @@ spec:
       service: ["any"]
       action: "drop"
       log: "all"
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "RuleSet"
+metadata: { name: "internal-to-untrusted", comment: "Office and servers going to the Internet", color: "blue" }
+spec:
+  from: "internal"
+  to: "untrusted"
+  rules:
     - name: "backup-offsite"
       source: ["grp-backup"]
       destination: ["offsite-backup"]
@@ -96,7 +106,7 @@ spec:
 ---
 apiVersion: "config.songbird-fw.com/v1alpha1"
 kind: "RuleSet"
-metadata: { name: "lan1-to-lan2", comment: "Intra-zone: office to servers (DM-38 allows members here)" }
+metadata: { name: "lan1-to-lan2", comment: "Between two members of internal (intraZoneTraffic: deny otherwise)" }
 spec:
   from: "lan1"
   to: "lan2"

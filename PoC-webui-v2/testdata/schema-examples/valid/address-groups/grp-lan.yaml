@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=../../../songbird.schema.json
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "AddressGroup"
+metadata:
+  name: "grp-lan"
+  comment: "Everything in the office network"
+  color: "blue"
+spec:
+  members: ["lan1-subnet", "printers"]

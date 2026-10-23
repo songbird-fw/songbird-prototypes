@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=../../../songbird.schema.json
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Interface"
+metadata:
+  name: "trunk"
+  comment: "802.1Q trunk to the core switch"
+spec:
+  type: "physical"
+  device: "enp2s0"
+  ipv4: { mode: "none" }
+  ipv6: { mode: "none" }

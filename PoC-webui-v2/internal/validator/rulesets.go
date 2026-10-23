@@ -10,7 +10,9 @@ import (
 )
 
 // RuleSets and their Policies: DM-06, DM-07, DM-08, DM-12, DM-13, DM-35,
-// DM-36, DM-38, DM-40, DM-41, and the RuleSet rules of validate.py.
+// DM-36 (on the effective lists of DM-42), DM-40, DM-41, DM-43, DM-44, and
+// the RuleSet rules of validate.py. Since domain model 0.7 a member
+// Interface may be used next to its Zone (DM-38).
 
 type dnatRule struct {
 	rs      m.RuleSet
@@ -34,21 +36,21 @@ func (x *v) rulesets() {
 		x.at(rs)
 		s := rs.Spec
 		from := x.ref(x.netNS, s.From, "spec.from")
-		to := x.ref(x.netNS, s.To, "spec.to")
+		x.ref(x.netNS, s.To, "spec.to")
 		if s.From == s.To {
-			x.err("same-side", "DM-06", "spec.to", "from and to must differ (intra-zone traffic uses Interface-to-Interface RuleSets, DM-38)")
+			if k, _ := from.(m.Interface); from != nil && k.Kind == "Interface" {
+				x.err("same-interface", "DM-06", "spec.to", "from and to cannot be the same Interface (use a Zone for intra-zone traffic)")
+			} else {
+				x.err("same-zone", "DM-06", "spec.to", "from and to cannot be the same Zone: traffic between its members is governed by Interface RuleSets and intraZoneTraffic (DM-39)")
+			}
 		}
 		key := s.From + "\x00" + s.To
 		if other, ok := pairs[key]; ok {
 			x.err("duplicate-pair", "DM-07", "spec", "RuleSet %q already governs %s -> %s", other, s.From, s.To)
 		}
 		pairs[key] = rs.Metadata.Name
-		if from != nil && to != nil && s.From != s.To {
-			x.zoneMembers(s, from, to)
-		}
 		fromIfs, toIfs := x.t.Side(s.From), x.t.Side(s.To)
 
-		enabled := 0
 		names := map[string]bool{}
 		for i, r := range s.Rules {
 			base := fmt.Sprintf("spec.rules[%d]", i)
@@ -56,9 +58,6 @@ func (x *v) rulesets() {
 				x.err("duplicate-rule", "DM-01", base+".name", "rule name %q is repeated in this RuleSet", r.Name)
 			}
 			names[r.Name] = true
-			if r.IsEnabled() {
-				enabled++
-			}
 			dnat := r.Nat != nil && r.Nat.Type == "dnat"
 			x.addressRefs(r.Source, base+".source", fromIfs, s.From, "enters from", false)
 			if dnat {
@@ -67,10 +66,11 @@ func (x *v) rulesets() {
 			} else {
 				x.addressRefs(r.Destination, base+".destination", toIfs, s.To, "leaves through", true)
 			}
-			if !m.IsAny(r.Service) {
-				for k, sv := range r.Service {
-					x.ref(x.svcNS, sv, fmt.Sprintf("%s.service[%d]", base, k), "Service", "ServiceGroup")
-				}
+			for k, sv := range r.Service {
+				x.ref(x.svcNS, sv, fmt.Sprintf("%s.service[%d]", base, k), "Service", "ServiceGroup")
+			}
+			if r.IsEnabled() {
+				x.unsupported(r, base)
 			}
 			if r.Schedule != "" {
 				x.warn("schedule-reserved", "schema", base+".schedule", "schedule is reserved for a future Schedule kind and is ignored")
@@ -90,33 +90,57 @@ func (x *v) rulesets() {
 				dnats = append(dnats, d)
 			}
 		}
-		if enabled > MaxPoliciesPerRuleSet {
-			x.err("policy-limit", "DM-36", "spec.rules", "%d enabled Policies exceed the per-RuleSet limit of %d (ADR-0006)", enabled, MaxPoliciesPerRuleSet)
-		}
 	}
+	x.effectiveLimits()
 	x.dnatOverlaps(dnats)
 }
 
-// zoneMembers enforces DM-38: an Interface that belongs to a Zone is
-// referenced through its Zone, except between two Interfaces of the same Zone.
-func (x *v) zoneMembers(s m.RuleSetSpec, from, to m.Doc) {
-	fk, _ := from.Header()
-	tk, _ := to.Header()
-	zf, zt := "", ""
-	if fk == "Interface" {
-		zf = x.t.ZoneOf(s.From)
+// effectiveLimits enforces DM-36 on the effective lists the Compiler builds
+// (DM-42): for each ordered pair of distinct Interfaces, the enabled
+// Policies of all its applicable RuleSets, from the most specific.
+func (x *v) effectiveLimits() {
+	reported := map[string]bool{}
+	for _, in := range x.t.Interfaces {
+		for _, out := range x.t.Interfaces {
+			seq := x.t.Applicable(in.Metadata.Name, out.Metadata.Name)
+			n := 0
+			var names []string
+			for _, rs := range seq {
+				names = append(names, rs.Metadata.Name)
+				for _, r := range rs.Spec.Rules {
+					if r.IsEnabled() {
+						n++
+					}
+				}
+			}
+			if n <= MaxPoliciesPerRuleSet || reported[strings.Join(names, ",")] {
+				continue
+			}
+			reported[strings.Join(names, ",")] = true
+			x.at(seq[0])
+			x.err("policy-limit", "DM-36", "spec.rules", "%s -> %s is governed by %s: %d enabled Policies exceed the limit of %d per effective list (ADR-0006)",
+				in.Metadata.Name, out.Metadata.Name, strings.Join(names, ", "), n, MaxPoliciesPerRuleSet)
+		}
 	}
-	if tk == "Interface" {
-		zt = x.t.ZoneOf(s.To)
-	}
-	if zf != "" && zf == zt {
-		return // intra-zone RuleSet: the only case where members are used directly
-	}
-	if zf != "" {
-		x.err("zone-member", "DM-38", "spec.from", "Interface %q belongs to Zone %q: reference the Zone (members are used directly only between two Interfaces of the same Zone)", s.From, zf)
-	}
-	if zt != "" {
-		x.err("zone-member", "DM-38", "spec.to", "Interface %q belongs to Zone %q: reference the Zone (members are used directly only between two Interfaces of the same Zone)", s.To, zt)
+}
+
+// unsupported enforces DM-43 and DM-44 on an enabled Policy: no fqdn or mac
+// Address (directly or through a group) until the Data Plane supports them
+// (validate.py: unsupported-address-kind); mac only as source.
+func (x *v) unsupported(r m.Rule, base string) {
+	for _, side := range []struct {
+		name string
+		refs []string
+	}{{"source", r.Source}, {"destination", r.Destination}} {
+		for k, ref := range side.refs {
+			for _, a := range x.t.ExpandAddresses(ref) {
+				kind := map[bool]string{true: "fqdn", false: "mac"}[a.Spec.FQDN != ""]
+				if a.Spec.FQDN == "" && a.Spec.MAC == "" {
+					continue
+				}
+				x.err("unsupported-address-kind", "DM-43", fmt.Sprintf("%s.%s[%d]", base, side.name, k), "Address %q (%s) is not supported by the Data Plane yet (R-012.4): disable the rule or remove the Address", a.Metadata.Name, kind)
+			}
+		}
 	}
 }
 
@@ -125,9 +149,6 @@ func (x *v) zoneMembers(s m.RuleSetSpec, from, to m.Doc) {
 // only on the side of the RuleSet that contains that Interface. side == nil
 // skips the binding check.
 func (x *v) addressRefs(refs []string, path string, side []string, sideName, verb string, destination bool) {
-	if m.IsAny(refs) {
-		return
-	}
 	for k, r := range refs {
 		p := fmt.Sprintf("%s[%d]", path, k)
 		if x.ref(x.addrNS, r, p, "Address", "AddressGroup") == nil {
@@ -135,7 +156,7 @@ func (x *v) addressRefs(refs []string, path string, side []string, sideName, ver
 		}
 		for _, a := range x.t.ExpandAddresses(r) {
 			if destination && a.Spec.MAC != "" {
-				x.err("mac-as-destination", "R-012", p, "MAC Address %q can only be used as source", a.Metadata.Name)
+				x.err("mac-as-destination", "DM-44", p, "MAC Address %q can only be used as source", a.Metadata.Name)
 			}
 			if side != nil && a.Spec.Interface != "" && !slices.Contains(side, a.Spec.Interface) {
 				via := ""
@@ -151,7 +172,7 @@ func (x *v) addressRefs(refs []string, path string, side []string, sideName, ver
 // dnatDestination: a dnat Policy matches the public address, before
 // translation, which should be an address of the incoming side (DM-40).
 func (x *v) dnatDestination(refs []string, path string, fromIfs []string, fromName string) {
-	if m.IsAny(refs) {
+	if x.t.AnyAddress(refs) {
 		return
 	}
 	var own []netip.Prefix
@@ -213,7 +234,7 @@ func (x *v) nat(r m.Rule, base string, toIfs []string, toName string) {
 	if n.Type != "dnat" {
 		return
 	}
-	if m.IsAny(r.Destination) {
+	if x.t.AnyAddress(r.Destination) {
 		x.err("dnat-any-destination", "DM-40", base+".destination", "a dnat rule needs an explicit destination (the public address), not \"any\"")
 	}
 	if target != nil {
@@ -227,7 +248,7 @@ func (x *v) nat(r m.Rule, base string, toIfs []string, toName string) {
 	if n.TranslateServiceTo == "" {
 		return
 	}
-	if m.IsAny(r.Service) {
+	if x.t.AnyService(r.Service) {
 		x.err("dnat-any-service", "DM-40", base+".service", "translateServiceTo requires an explicit service, not \"any\"")
 	}
 	o := x.ref(x.svcNS, n.TranslateServiceTo, base+".nat.translateServiceTo", "Service")

@@ -2,33 +2,70 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://config.songbird-fw.com/v1alpha1/system.schema.json",
   "title": "System",
-  "description": "Global firewall settings — the equivalent of FortiGate 'config system global / admin / ntp / dns / session-ttl' and 'config log'. Singleton: exactly one System object per configuration, named 'system' (validator check). Every section has defaults, so a minimal System object is '{hostname}'. Secrets are never stored in clear: they use the ENC[...] envelope (RA R-020.5).",
+  "description": "Global firewall settings — the equivalent of FortiGate 'config system global / admin / session-ttl', 'config system dns-server' and 'config system ntp' (under systemServices) and 'config log'. Singleton: exactly one System object per configuration, named 'system' (validator check). Every section has defaults, so a minimal System object is '{hostname}'. Secrets are never stored in clear: they use the ENC[...] envelope (RA R-020.5).",
   "type": "object",
   "additionalProperties": false,
-  "required": ["apiVersion", "kind", "metadata", "spec"],
+  "required": [
+    "apiVersion",
+    "kind",
+    "metadata",
+    "spec"
+  ],
   "properties": {
-    "apiVersion": { "$ref": "common.schema.json#/$defs/apiVersion" },
-    "kind": { "const": "System" },
+    "apiVersion": {
+      "$ref": "common.schema.json#/$defs/apiVersion"
+    },
+    "kind": {
+      "const": "System"
+    },
     "metadata": {
       "$ref": "common.schema.json#/$defs/metadata",
-      "properties": { "name": { "const": "system" } }
+      "properties": {
+        "name": {
+          "const": "system"
+        }
+      }
     },
     "spec": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["hostname"],
+      "required": [
+        "hostname"
+      ],
       "properties": {
-        "hostname": { "$ref": "common.schema.json#/$defs/fqdnOrLabel" },
-        "timezone": { "description": "IANA time zone.", "type": "string", "pattern": "^[A-Za-z_]+(/[A-Za-z0-9_+-]+)*$", "default": "UTC" },
-        "admin":     { "$ref": "#/$defs/admin" },
-        "ntp":       { "$ref": "#/$defs/ntp" },
-        "dns":       { "$ref": "#/$defs/dns" },
-        "logging":   { "$ref": "#/$defs/logging" },
-        "session":   { "$ref": "#/$defs/session" },
-        "nat64":     { "$ref": "#/$defs/nat64" },
-        "git":       { "$ref": "#/$defs/git" },
-        "updates":   { "$ref": "#/$defs/updates" },
-        "threatFeeds": { "$ref": "#/$defs/threatFeeds" }
+        "hostname": {
+          "$ref": "common.schema.json#/$defs/fqdnOrLabel"
+        },
+        "timezone": {
+          "description": "IANA time zone.",
+          "type": "string",
+          "pattern": "^[A-Za-z_]+(/[A-Za-z0-9_+-]+)*$",
+          "default": "UTC"
+        },
+        "admin": {
+          "$ref": "#/$defs/admin"
+        },
+        "systemServices": {
+          "$ref": "#/$defs/systemServices"
+        },
+        "logging": {
+          "$ref": "#/$defs/logging"
+        },
+        "session": {
+          "$ref": "#/$defs/session"
+        },
+        "nat64": {
+          "$ref": "#/$defs/nat64"
+        },
+        "git": {
+          "$ref": "#/$defs/git"
+        },
+        "updates": {
+          "$ref": "#/$defs/updates"
+        },
+        "threatFeeds": {
+          "$ref": "#/$defs/threatFeeds"
+        }
       }
     }
   },
@@ -38,244 +75,768 @@
       "type": "string",
       "pattern": "^ENC\\[[A-Za-z0-9+/=:_-]+\\]$"
     },
-
     "admin": {
       "description": "Management UI/API — FortiGate 'config system global' admin-* and 'config system admin'.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "httpsPort":  { "$ref": "common.schema.json#/$defs/port", "default": 443 },
-        "redirectHttp": { "description": "Redirect plain HTTP on port 80 to HTTPS (R-038.1); when false, port 80 is closed.", "type": "boolean", "default": true },
-        "sessionTimeout": { "description": "Idle timeout of a UI session (R-043.5). FortiGate: admintimeout.", "$ref": "common.schema.json#/$defs/duration", "default": "8h" },
+        "httpsPort": {
+          "$ref": "common.schema.json#/$defs/port",
+          "default": 443
+        },
+        "redirectHttp": {
+          "description": "Redirect plain HTTP on port 80 to HTTPS (R-038.1); when false, port 80 is closed.",
+          "type": "boolean",
+          "default": true
+        },
+        "sessionTimeout": {
+          "description": "Idle timeout of a UI session (R-043.5). FortiGate: admintimeout.",
+          "$ref": "common.schema.json#/$defs/duration",
+          "default": "8h"
+        },
         "lockout": {
           "description": "Brute-force protection (R-043.2). FortiGate: admin-lockout-threshold / admin-lockout-duration.",
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "threshold": { "type": "integer", "minimum": 1, "maximum": 100, "default": 5 },
-            "duration":  { "$ref": "common.schema.json#/$defs/duration", "default": "10m" }
+            "threshold": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 5
+            },
+            "duration": {
+              "$ref": "common.schema.json#/$defs/duration",
+              "default": "10m"
+            }
           }
         },
         "trustedHosts": {
           "description": "Address / AddressGroup names from which the management UI may be reached. Empty = any address on Interfaces that allow 'https' (see Interface.spec.allowAccess). FortiGate: trusthost.",
           "type": "array",
           "uniqueItems": true,
-          "items": { "$ref": "common.schema.json#/$defs/reference" }
+          "items": {
+            "$ref": "common.schema.json#/$defs/reference"
+          }
         },
         "certificate": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["mode"],
+          "required": [
+            "mode"
+          ],
           "properties": {
-            "mode": { "enum": ["self-signed", "acme-http01", "acme-dns01", "manual"] },
+            "mode": {
+              "enum": [
+                "self-signed",
+                "acme-http01",
+                "acme-dns01",
+                "manual"
+              ]
+            },
             "acme": {
               "type": "object",
               "additionalProperties": false,
               "properties": {
-                "email": { "type": "string", "format": "email" },
-                "directoryUrl": { "type": "string", "format": "uri", "default": "https://acme-v02.api.letsencrypt.org/directory" },
-                "domains": { "type": "array", "minItems": 1, "items": { "$ref": "common.schema.json#/$defs/fqdn" } },
-                "dnsProvider": { "description": "dns01 only.", "type": "string", "maxLength": 63 },
-                "dnsCredentials": { "$ref": "#/$defs/encrypted" },
-                "renewBeforeDays": { "type": "integer", "minimum": 1, "maximum": 89, "default": 30 }
+                "email": {
+                  "type": "string",
+                  "format": "email"
+                },
+                "directoryUrl": {
+                  "type": "string",
+                  "format": "uri",
+                  "default": "https://acme-v02.api.letsencrypt.org/directory"
+                },
+                "domains": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "$ref": "common.schema.json#/$defs/fqdn"
+                  }
+                },
+                "dnsProvider": {
+                  "description": "dns01 only.",
+                  "type": "string",
+                  "maxLength": 63
+                },
+                "dnsCredentials": {
+                  "$ref": "#/$defs/encrypted"
+                },
+                "renewBeforeDays": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 89,
+                  "default": 30
+                }
               }
             }
           },
           "allOf": [
-            { "if": { "properties": { "mode": { "enum": ["acme-http01", "acme-dns01"] } } }, "then": { "required": ["acme"], "properties": { "acme": { "required": ["email", "domains"] } } } },
-            { "if": { "properties": { "mode": { "const": "acme-dns01" } } }, "then": { "properties": { "acme": { "required": ["dnsProvider", "dnsCredentials"] } } } }
+            {
+              "if": {
+                "properties": {
+                  "mode": {
+                    "enum": [
+                      "acme-http01",
+                      "acme-dns01"
+                    ]
+                  }
+                }
+              },
+              "then": {
+                "required": [
+                  "acme"
+                ],
+                "properties": {
+                  "acme": {
+                    "required": [
+                      "email",
+                      "domains"
+                    ]
+                  }
+                }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "mode": {
+                    "const": "acme-dns01"
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "acme": {
+                    "required": [
+                      "dnsProvider",
+                      "dnsCredentials"
+                    ]
+                  }
+                }
+              }
+            }
           ]
         },
         "ui": {
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "theme": { "enum": ["light", "dark", "auto"], "default": "auto" },
-            "language": { "type": "string", "pattern": "^[a-z]{2}(-[A-Z]{2})?$", "default": "en" }
+            "theme": {
+              "enum": [
+                "light",
+                "dark",
+                "auto"
+              ],
+              "default": "auto"
+            },
+            "language": {
+              "type": "string",
+              "pattern": "^[a-z]{2}(-[A-Z]{2})?$",
+              "default": "en"
+            }
           }
         }
       }
     },
-
     "ntp": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["enabled"],
+      "required": [
+        "enabled"
+      ],
       "properties": {
-        "enabled": { "type": "boolean", "default": true },
-        "servers": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "common.schema.json#/$defs/fqdnOrIp" }, "default": ["pool.ntp.org"] },
-        "serveToInterfaces": {
-          "description": "Act as NTP server for clients on these Interfaces/Zones.",
-          "type": "array", "uniqueItems": true, "items": { "$ref": "common.schema.json#/$defs/reference" }
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "servers": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "common.schema.json#/$defs/fqdnOrIp"
+          },
+          "default": [
+            "pool.ntp.org"
+          ]
+        },
+        "listenOn": {
+          "description": "Interfaces or Zones (a Zone stands for all its members) on which the firewall acts as server for this System Service. Traffic to the service on those Interfaces is admitted without a Policy (R-058). Empty/omitted = the service is not exposed.",
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "common.schema.json#/$defs/reference"
+          }
         }
-      }
+      },
+      "description": "NTP client, and NTP server for the networks listed in listenOn (R-059)."
     },
-
     "dns": {
-      "description": "System resolver and the local DNS Subsystem (R-018, R-034). FortiGate: 'config system dns' + 'config system dns-server'.",
+      "description": "Local DNS server / system resolver (R-018, R-034). FortiGate: 'config system dns' + 'config system dns-server'.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["mode"],
+      "required": [
+        "mode"
+      ],
       "properties": {
-        "mode": { "enum": ["forwarder", "recursive"], "default": "forwarder" },
+        "mode": {
+          "enum": [
+            "forwarder",
+            "recursive"
+          ],
+          "default": "forwarder"
+        },
         "upstreams": {
           "description": "Forwarder mode: ordered list; first is primary. Failover after 'failoverAfterTimeouts' consecutive timeouts (R-034).",
-          "type": "array", "minItems": 1, "maxItems": 4, "uniqueItems": true,
-          "items": { "$ref": "common.schema.json#/$defs/ipAddress" }
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 4,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "common.schema.json#/$defs/ipAddress"
+          }
         },
-        "failoverAfterTimeouts": { "type": "integer", "minimum": 1, "maximum": 10, "default": 3 },
-        "dnssec": { "description": "Recursive mode only (R-018.5).", "type": "boolean", "default": true },
-        "localDomain": { "$ref": "common.schema.json#/$defs/fqdn" },
+        "failoverAfterTimeouts": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10,
+          "default": 3
+        },
+        "dnssec": {
+          "description": "Recursive mode only (R-018.5).",
+          "type": "boolean",
+          "default": true
+        },
+        "localDomain": {
+          "$ref": "common.schema.json#/$defs/fqdn"
+        },
         "localRecords": {
           "description": "Static names (R-018.2).",
           "type": "array",
           "items": {
-            "type": "object", "additionalProperties": false, "required": ["name", "address"],
-            "properties": { "name": { "$ref": "common.schema.json#/$defs/fqdnOrLabel" }, "address": { "$ref": "common.schema.json#/$defs/ipAddress" } }
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "address"
+            ],
+            "properties": {
+              "name": {
+                "$ref": "common.schema.json#/$defs/fqdnOrLabel"
+              },
+              "address": {
+                "$ref": "common.schema.json#/$defs/ipAddress"
+              }
+            }
           }
         },
-        "dns64": { "description": "Synthesise AAAA for IPv4-only names using spec.nat64.prefix (R-018.6).", "type": "boolean", "default": false },
-        "serveToInterfaces": {
-          "description": "Interfaces/Zones whose clients may query the local DNS server.",
-          "type": "array", "uniqueItems": true, "items": { "$ref": "common.schema.json#/$defs/reference" }
+        "dns64": {
+          "description": "Synthesise AAAA for IPv4-only names using spec.nat64.prefix (R-018.6).",
+          "type": "boolean",
+          "default": false
+        },
+        "listenOn": {
+          "description": "Interfaces or Zones (a Zone stands for all its members) on which the firewall acts as server for this System Service. Traffic to the service on those Interfaces is admitted without a Policy (R-058). Empty/omitted = the service is not exposed.",
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "common.schema.json#/$defs/reference"
+          }
         }
       },
       "allOf": [
-        { "if": { "properties": { "mode": { "const": "forwarder" } } }, "then": { "required": ["upstreams"] } }
+        {
+          "if": {
+            "properties": {
+              "mode": {
+                "const": "forwarder"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "upstreams"
+            ]
+          }
+        }
       ]
     },
-
     "logging": {
       "description": "Traffic and audit logs (R-029, R-037, R-050). FortiGate: 'config log disk setting' / 'config log syslogd setting'.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "directory": { "type": "string", "pattern": "^/[^\\0]*$", "default": "/var/lib/songbird/log" },
+        "directory": {
+          "type": "string",
+          "pattern": "^/[^\\0]*$",
+          "default": "/var/lib/songbird/log"
+        },
         "rotation": {
-          "type": "object", "additionalProperties": false,
+          "type": "object",
+          "additionalProperties": false,
           "properties": {
-            "maxFileSizeMb": { "type": "integer", "minimum": 1, "maximum": 10240, "default": 100 },
-            "retentionDays": { "type": "integer", "minimum": 1, "maximum": 3650, "default": 30 },
-            "compress": { "type": "boolean", "default": true }
+            "maxFileSizeMb": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10240,
+              "default": 100
+            },
+            "retentionDays": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 3650,
+              "default": 30
+            },
+            "compress": {
+              "type": "boolean",
+              "default": true
+            }
           }
         },
         "anonymizeSourceIp": {
           "description": "GDPR pseudonymisation of source addresses in the Traffic Log (R-037). 'interfaces' selects where it applies (R-037.1); empty with enabled=true means everywhere.",
-          "type": "object", "additionalProperties": false, "required": ["enabled"],
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "enabled"
+          ],
           "properties": {
-            "enabled": { "type": "boolean" },
-            "interfaces": { "type": "array", "uniqueItems": true, "items": { "$ref": "common.schema.json#/$defs/reference" } },
-            "ipv4MaskBits": { "type": "integer", "minimum": 8, "maximum": 24, "default": 8 },
-            "ipv6MaskBits": { "type": "integer", "minimum": 32, "maximum": 96, "default": 80 }
+            "enabled": {
+              "type": "boolean"
+            },
+            "interfaces": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "$ref": "common.schema.json#/$defs/reference"
+              }
+            },
+            "ipv4MaskBits": {
+              "type": "integer",
+              "minimum": 8,
+              "maximum": 24,
+              "default": 8
+            },
+            "ipv6MaskBits": {
+              "type": "integer",
+              "minimum": 32,
+              "maximum": 96,
+              "default": 80
+            }
           }
         },
         "syslog": {
-          "type": "object", "additionalProperties": false, "required": ["enabled"],
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "enabled"
+          ],
           "properties": {
-            "enabled": { "type": "boolean" },
-            "server": { "$ref": "common.schema.json#/$defs/fqdnOrIp" },
-            "port": { "$ref": "common.schema.json#/$defs/port", "default": 6514 },
-            "transport": { "enum": ["tls", "tcp", "udp"], "default": "tls" },
-            "facility": { "enum": ["local0", "local1", "local2", "local3", "local4", "local5", "local6", "local7"], "default": "local0" }
+            "enabled": {
+              "type": "boolean"
+            },
+            "server": {
+              "$ref": "common.schema.json#/$defs/fqdnOrIp"
+            },
+            "port": {
+              "$ref": "common.schema.json#/$defs/port",
+              "default": 6514
+            },
+            "transport": {
+              "enum": [
+                "tls",
+                "tcp",
+                "udp"
+              ],
+              "default": "tls"
+            },
+            "facility": {
+              "enum": [
+                "local0",
+                "local1",
+                "local2",
+                "local3",
+                "local4",
+                "local5",
+                "local6",
+                "local7"
+              ],
+              "default": "local0"
+            }
           },
-          "if": { "properties": { "enabled": { "const": true } } }, "then": { "required": ["server"] }
+          "if": {
+            "properties": {
+              "enabled": {
+                "const": true
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "server"
+            ]
+          }
         }
       }
     },
-
     "session": {
       "description": "Connection-tracking behaviour (R-045.2, R-053, R-054). FortiGate: 'config system session-ttl', 'config system settings'.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
         "timeouts": {
-          "type": "object", "additionalProperties": false,
+          "type": "object",
+          "additionalProperties": false,
           "properties": {
-            "tcpEstablished": { "$ref": "common.schema.json#/$defs/duration", "default": "1h" },
-            "tcpHandshake":   { "$ref": "common.schema.json#/$defs/duration", "default": "30s" },
-            "tcpClosing":     { "$ref": "common.schema.json#/$defs/duration", "default": "10s" },
-            "udp":            { "$ref": "common.schema.json#/$defs/duration", "default": "60s" },
-            "udpBidirectional": { "$ref": "common.schema.json#/$defs/duration", "default": "180s" },
-            "icmp":           { "$ref": "common.schema.json#/$defs/duration", "default": "30s" }
+            "tcpEstablished": {
+              "$ref": "common.schema.json#/$defs/duration",
+              "default": "1h"
+            },
+            "tcpHandshake": {
+              "$ref": "common.schema.json#/$defs/duration",
+              "default": "30s"
+            },
+            "tcpClosing": {
+              "$ref": "common.schema.json#/$defs/duration",
+              "default": "10s"
+            },
+            "udp": {
+              "$ref": "common.schema.json#/$defs/duration",
+              "default": "60s"
+            },
+            "udpBidirectional": {
+              "$ref": "common.schema.json#/$defs/duration",
+              "default": "180s"
+            },
+            "icmp": {
+              "$ref": "common.schema.json#/$defs/duration",
+              "default": "30s"
+            }
           }
         },
-        "maxSessions": { "type": "integer", "minimum": 1024, "default": 1000000 },
-        "ipv4NonInitialFragments": { "description": "R-053.", "enum": ["drop", "track"], "default": "drop" },
-        "onRuleChange": { "description": "What happens to established Flows a new rule set no longer permits (R-054). FortiGate default: terminate.", "enum": ["terminate", "expire"], "default": "terminate" }
+        "maxSessions": {
+          "type": "integer",
+          "minimum": 1024,
+          "default": 1000000
+        },
+        "ipv4NonInitialFragments": {
+          "description": "R-053.",
+          "enum": [
+            "drop",
+            "track"
+          ],
+          "default": "drop"
+        },
+        "onRuleChange": {
+          "description": "What happens to established Flows a new rule set no longer permits (R-054). FortiGate default: terminate.",
+          "enum": [
+            "terminate",
+            "expire"
+          ],
+          "default": "terminate"
+        }
       }
     },
-
     "nat64": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["enabled"],
+      "required": [
+        "enabled"
+      ],
       "properties": {
-        "enabled": { "type": "boolean", "default": false },
-        "prefix": { "description": "R-006.1 / R-006.2.", "$ref": "common.schema.json#/$defs/ipv6Cidr", "default": "64:ff9b::/96" }
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "prefix": {
+          "description": "R-006.1 / R-006.2.",
+          "$ref": "common.schema.json#/$defs/ipv6Cidr",
+          "default": "64:ff9b::/96"
+        }
       }
     },
-
     "git": {
       "description": "GitOps remote (R-021.x, R-023.3).",
       "type": "object",
       "additionalProperties": false,
-      "required": ["enabled"],
+      "required": [
+        "enabled"
+      ],
       "properties": {
-        "enabled": { "type": "boolean" },
-        "remote": { "type": "string", "pattern": "^(https://[^\\s]+|ssh://[^\\s]+|[A-Za-z0-9._-]+@[A-Za-z0-9.-]+:[^\\s]+)$" },
-        "branch": { "type": "string", "pattern": "^[^\\s~^:?*\\[\\\\]+$", "default": "main" },
-        "autoPush": { "type": "boolean", "default": true },
-        "pullInterval": { "description": "Periodic pull for HA/GitOps (R-023.4). '0s' disables.", "$ref": "common.schema.json#/$defs/duration", "default": "60s" },
-        "retryInterval": { "$ref": "common.schema.json#/$defs/duration", "default": "60s" },
+        "enabled": {
+          "type": "boolean"
+        },
+        "remote": {
+          "type": "string",
+          "pattern": "^(https://[^\\s]+|ssh://[^\\s]+|[A-Za-z0-9._-]+@[A-Za-z0-9.-]+:[^\\s]+)$"
+        },
+        "branch": {
+          "type": "string",
+          "pattern": "^[^\\s~^:?*\\[\\\\]+$",
+          "default": "main"
+        },
+        "autoPush": {
+          "type": "boolean",
+          "default": true
+        },
+        "pullInterval": {
+          "description": "Periodic pull for HA/GitOps (R-023.4). '0s' disables.",
+          "$ref": "common.schema.json#/$defs/duration",
+          "default": "60s"
+        },
+        "retryInterval": {
+          "$ref": "common.schema.json#/$defs/duration",
+          "default": "60s"
+        },
         "auth": {
-          "type": "object", "additionalProperties": false, "required": ["type"],
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type"
+          ],
           "properties": {
-            "type": { "enum": ["ssh-key", "token", "none"] },
-            "sshPrivateKey": { "$ref": "#/$defs/encrypted" },
-            "token": { "$ref": "#/$defs/encrypted" },
-            "username": { "type": "string", "maxLength": 63 }
+            "type": {
+              "enum": [
+                "ssh-key",
+                "token",
+                "none"
+              ]
+            },
+            "sshPrivateKey": {
+              "$ref": "#/$defs/encrypted"
+            },
+            "token": {
+              "$ref": "#/$defs/encrypted"
+            },
+            "username": {
+              "type": "string",
+              "maxLength": 63
+            }
           },
           "allOf": [
-            { "if": { "properties": { "type": { "const": "ssh-key" } } }, "then": { "required": ["sshPrivateKey"] } },
-            { "if": { "properties": { "type": { "const": "token" } } }, "then": { "required": ["token"] } }
+            {
+              "if": {
+                "properties": {
+                  "type": {
+                    "const": "ssh-key"
+                  }
+                }
+              },
+              "then": {
+                "required": [
+                  "sshPrivateKey"
+                ]
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "type": {
+                    "const": "token"
+                  }
+                }
+              },
+              "then": {
+                "required": [
+                  "token"
+                ]
+              }
+            }
           ]
         }
       },
-      "if": { "properties": { "enabled": { "const": true } } }, "then": { "required": ["remote", "auth"] }
+      "if": {
+        "properties": {
+          "enabled": {
+            "const": true
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "remote",
+          "auth"
+        ]
+      }
     },
-
     "updates": {
       "description": "A/B system updates (R-019). FortiGate: 'config system autoupdate'.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "channel": { "enum": ["stable", "beta"], "default": "stable" },
-        "automatic": { "type": "boolean", "default": false },
+        "channel": {
+          "enum": [
+            "stable",
+            "beta"
+          ],
+          "default": "stable"
+        },
+        "automatic": {
+          "type": "boolean",
+          "default": false
+        },
         "window": {
           "description": "Maintenance window for automatic updates, local time (HH:MM-HH:MM).",
-          "type": "string", "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]-([01][0-9]|2[0-3]):[0-5][0-9]$"
+          "type": "string",
+          "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]-([01][0-9]|2[0-3]):[0-5][0-9]$"
         }
       }
     },
-
     "threatFeeds": {
       "description": "Blocklists (R-039). FortiGate: external threat feeds / 'config system external-resource'.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["enabled"],
+      "required": [
+        "enabled"
+      ],
       "properties": {
-        "enabled": { "type": "boolean" },
-        "refreshInterval": { "$ref": "common.schema.json#/$defs/duration", "default": "1h" },
+        "enabled": {
+          "type": "boolean"
+        },
+        "refreshInterval": {
+          "$ref": "common.schema.json#/$defs/duration",
+          "default": "1h"
+        },
         "sources": {
-          "type": "array", "uniqueItems": true,
+          "type": "array",
+          "uniqueItems": true,
           "items": {
-            "type": "object", "additionalProperties": false, "required": ["name", "url"],
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "url"
+            ],
             "properties": {
-              "name": { "$ref": "common.schema.json#/$defs/objectName" },
-              "url": { "type": "string", "format": "uri", "pattern": "^https://" },
-              "enabled": { "type": "boolean", "default": true }
+              "name": {
+                "$ref": "common.schema.json#/$defs/objectName"
+              },
+              "url": {
+                "type": "string",
+                "format": "uri",
+                "pattern": "^https://"
+              },
+              "enabled": {
+                "type": "boolean",
+                "default": true
+              }
             }
           }
+        }
+      }
+    },
+    "systemServices": {
+      "description": "System Services: network services the firewall provides to its networks (R-058). dns and ntp declare where they listen with listenOn; dhcp has one block per Interface.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "dns": {
+          "$ref": "#/$defs/dns"
+        },
+        "ntp": {
+          "$ref": "#/$defs/ntp"
+        },
+        "dhcp": {
+          "$ref": "#/$defs/dhcp"
+        }
+      }
+    },
+    "dhcpPool": {
+      "description": "DHCPv4 server for one Interface (R-017…R-017.5). The key of the block is the Interface name; the server listens on that Interface only. DHCPv6 / prefix delegation (R-017.4) is configured on the Interface and is out of scope here.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "range"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "range": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "start",
+            "end"
+          ],
+          "properties": {
+            "start": {
+              "$ref": "common.schema.json#/$defs/ipv4Address"
+            },
+            "end": {
+              "$ref": "common.schema.json#/$defs/ipv4Address"
+            }
+          },
+          "description": "Inclusive pool, inside the Interface's static IPv4 subnet (validator check)."
+        },
+        "leaseTime": {
+          "$ref": "common.schema.json#/$defs/duration",
+          "default": "12h",
+          "description": "R-017.1."
+        },
+        "gateway": {
+          "$ref": "common.schema.json#/$defs/ipv4Address",
+          "description": "Default: the Interface's own IPv4 address."
+        },
+        "dnsServers": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 3,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "common.schema.json#/$defs/ipv4Address"
+          },
+          "description": "Default: the Interface's own IPv4 address. If the firewall's address is advertised, the Interface (or its Zone) must be in systemServices.dns.listenOn (validator check, R-017.6)."
+        },
+        "ntpServers": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 3,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "common.schema.json#/$defs/ipv4Address"
+          },
+          "description": "Same coherence rule as dnsServers, against systemServices.ntp.listenOn."
+        },
+        "domain": {
+          "$ref": "common.schema.json#/$defs/fqdn"
+        },
+        "reservations": {
+          "type": "array",
+          "uniqueItems": true,
+          "description": "Static bindings by MAC (R-017.2). Addresses must be inside the Interface subnet; MAC and address unique within the pool.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "mac",
+              "address"
+            ],
+            "properties": {
+              "mac": {
+                "$ref": "common.schema.json#/$defs/macAddress"
+              },
+              "address": {
+                "$ref": "common.schema.json#/$defs/ipv4Address"
+              },
+              "hostname": {
+                "$ref": "common.schema.json#/$defs/fqdnOrLabel"
+              }
+            }
+          }
+        }
+      }
+    },
+    "dhcp": {
+      "description": "DHCP server, one block per Interface, keyed by Interface name (RA open issue 13, resolved 2026-10-19). Every listed Interface must exist and have a static IPv4 address.",
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": false,
+      "patternProperties": {
+        "^[a-z0-9]([a-z0-9._-]*[a-z0-9])?$": {
+          "$ref": "#/$defs/dhcpPool"
         }
       }
     }

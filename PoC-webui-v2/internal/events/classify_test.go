@@ -21,7 +21,9 @@ func TestClassify(t *testing.T) {
 		policy, xdst, xsrc string
 	}{
 		{"office to the Internet, masqueraded", flow("lan1", "192.168.10.60", "8.8.8.8", "tcp", 443), "accept", "policy", "internal-to-untrusted", "office-web-dns", "", "203.0.113.10"},
-		{"first match wins: printers are blocked", flow("lan2", "192.168.20.105", "8.8.8.8", "tcp", 443), "drop", "policy", "internal-to-untrusted", "block-printers-internet", "", ""},
+		{"DM-42: the member RuleSet comes first, printers are blocked", flow("lan2", "192.168.20.105", "8.8.8.8", "tcp", 443), "drop", "policy", "lan2-to-untrusted", "block-printers-internet", "", ""},
+		{"DM-42: no match in lan2-to-untrusted, the Zone RuleSet decides", flow("lan2", "192.168.20.30", "8.8.8.8", "tcp", 443), "accept", "policy", "internal-to-untrusted", "office-web-dns", "", "203.0.113.10"},
+		{"Default Deny after the whole sequence", flow("lan2", "192.168.20.30", "8.8.8.8", "tcp", 23), "drop", "default-deny", "internal-to-untrusted", "", "", ""},
 		{"guest SNAT to the pool", flow("guest", "192.168.30.60", "8.8.8.8", "udp", 53), "accept", "policy", "guest-to-untrusted", "guest-web", "", "203.0.113.20"},
 		{"DNAT matched before translation", flow("wan", "91.1.2.3", "203.0.113.10", "tcp", 443), "accept", "policy", "untrusted-to-dmz", "publish-web", "172.16.40.10:8443", ""},
 		{"no RuleSet for guest -> lan1", flow("guest", "192.168.30.60", "192.168.10.5", "tcp", 445), "drop", "no-ruleset", "", "", "", ""},

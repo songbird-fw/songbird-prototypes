@@ -24,8 +24,20 @@ func docs(t *testing.T, file string) []m.RawDoc {
 	return d
 }
 
+func yamlFiles(t *testing.T, dir string) []string {
+	t.Helper()
+	var files []string
+	_ = filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
+		if err == nil && !d.IsDir() && filepath.Ext(p) == ".yaml" {
+			files = append(files, p)
+		}
+		return nil
+	})
+	return files
+}
+
 func TestValidExamplesPassTheSchema(t *testing.T) {
-	files, _ := filepath.Glob(corpus + "/valid/*/*.yaml")
+	files := yamlFiles(t, corpus+"/valid")
 	if len(files) == 0 {
 		t.Fatal("no corpus")
 	}
@@ -38,26 +50,32 @@ func TestValidExamplesPassTheSchema(t *testing.T) {
 			}
 		}
 	}
-	if n != 43 {
-		t.Errorf("expected the 43 objects of the schema README, got %d", n)
+	if n != 57 {
+		t.Errorf("expected the 57 objects of the schema README, got %d", n)
 	}
 }
 
-// The invalid corpus files whose error is structural (the others are
-// semantic and are covered by the validator tests).
+// The invalid corpus cases whose error is structural, as validate.py
+// reports them (the others are semantic and are covered by the validator
+// tests). Each case is a directory.
 var structural = []string{
 	"01-netmask-notation", "02-address-two-forms", "04-tcp-no-port", "05-icmp-with-port",
-	"06-port-out-of-range", "09-ruleset-any-interface", "10-drop-with-nat", "12-vlan-without-parent",
+	"06-port-out-of-range", "10-drop-with-nat", "12-vlan-without-parent",
 	"13-vlan-id-4095", "15-dnat-without-translate-ip", "17-unknown-field", "18-reserved-name",
 	"19-color-literal-hex", "22-color-bad-hex", "26-color-with-color", "27-color-meaning-removed",
 	"28-snat-with-translate-service", "32-system-wrong-name", "34-system-plaintext-secret",
 	"36-system-bad-duration", "37-system-git-enabled-without-remote", "38-interface-bad-allowaccess",
+	"39-interface-role-removed", "43-system-old-serveto", "45-service-sourceport",
 }
 
 func TestStructuralInvalidExamplesFail(t *testing.T) {
 	for _, name := range structural {
 		failed := false
-		for _, d := range docs(t, corpus+"/invalid/"+name+".yaml") {
+		var all []m.RawDoc
+		for _, f := range yamlFiles(t, corpus+"/invalid/"+name) {
+			all = append(all, docs(t, f)...)
+		}
+		for _, d := range all {
 			if is := schema.Validate(d.Value); len(is) > 0 {
 				failed = true
 				t.Logf("%s: %s/%s %v", name, d.Kind, d.Name, is)

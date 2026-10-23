@@ -1,8 +1,8 @@
 // Package schema is layer 1 of validation: every document is checked
-// against the JSON Schema of songbird-yaml-schema v1alpha1, the normative
-// artifact of the configuration format (C-005, R-020.2). v1alpha1/ is a
-// verbatim copy of songbird-yaml-schema/schema at commit 55e63ac; ext/
-// holds the PoC proposals for the kinds the schema does not cover yet.
+// against the v1alpha1 JSON Schema, the normative artifact of the
+// configuration format (C-005, R-020.2). v1alpha1/ is a verbatim copy of
+// songbird-fw/schema at commit 99bfafe; ext/ holds the PoC proposals for
+// the kinds the schema does not cover yet (StaticRoute, User).
 //
 // The schema README names santhosh-tekuri/jsonschema as the Go library for
 // this layer. The patterns use ECMAScript lookaheads, so the regexp engine
@@ -33,7 +33,6 @@ const base = "https://config.songbird-fw.com/v1alpha1/"
 // Extensions are the kinds validated against a PoC proposal in ext/.
 var Extensions = map[string]string{
 	"StaticRoute": "staticroute.schema.json",
-	"DhcpServer":  "dhcpserver.schema.json",
 	"User":        "user.schema.json",
 }
 
@@ -200,16 +199,15 @@ func seenKey(i Issue) string { return i.Path }
 // hints turn the generic messages of 'not' and 'oneOf' into the rule the
 // schema expresses there; keys are suffixes of the failing schema location.
 var hints = []struct{ suffix, text string }{
-	{"common.schema.json#/$defs/objectName/not", "'any', 'all' and 'none' are reserved names"},
+	{"common.schema.json#/$defs/objectName/not", "'none' is a reserved name"},
 	{"ruleset.schema.json#/$defs/rule/allOf/0/then/not", "a drop rule cannot have nat"},
 	{"ruleset.schema.json#/$defs/nat/allOf/1/then/not", "translateServiceTo is allowed only with nat type dnat"},
-	{"ruleset.schema.json#/$defs/addressList/oneOf", "either [\"any\"] or a non-empty list of Address / AddressGroup names"},
-	{"ruleset.schema.json#/$defs/serviceList/oneOf", "either [\"any\"] or a non-empty list of Service / ServiceGroup names"},
 	{"color.schema.json#/properties/metadata/not", "a Color cannot itself have a color"},
 	{"address.schema.json#/properties/spec/oneOf", "exactly one of subnet, range, fqdn, mac must be set"},
-	{"service.schema.json#/$defs/protocolEntry/allOf/0/then/not", "tcp/udp/sctp take port and sourcePort only"},
+	{"service.schema.json#/$defs/protocolEntry/allOf/0/then/not", "tcp/udp/sctp take port only (sourcePort was removed, schema decision 17)"},
 	{"service.schema.json#/$defs/protocolEntry/allOf/1/then/not", "icmp/icmpv6 take icmpType and icmpCode only, no port"},
 	{"service.schema.json#/$defs/protocolEntry/allOf/2/then/not", "ip takes protocolNumber only"},
+	{"service.schema.json#/$defs/protocolEntry/allOf/3/then/not", "protocol any takes no port, icmpType or protocolNumber"},
 	{"interface.schema.json#/properties/spec/allOf/0/then/not", "a physical Interface has neither parent nor vlanId"},
 	{"interface.schema.json#/properties/spec/allOf/1/then/not", "a VLAN Interface has no device: it is named after its parent"},
 	{"interface.schema.json#/$defs/ipv4Config/allOf/1/then/not", "addresses and gateway are allowed only with mode static"},

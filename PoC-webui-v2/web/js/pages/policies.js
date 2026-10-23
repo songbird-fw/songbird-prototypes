@@ -1,13 +1,18 @@
-// Policies grouped by RuleSet (domain-model.md v0.6, ruleset.schema.json):
+// Policies grouped by RuleSet (domain-model.md v0.7, ruleset.schema.json):
 // one RuleSet per ordered (from, to) pair of Interfaces or Zones, holding an
-// ordered list of rules; the first match wins (R-014.4), unmatched traffic is
-// dropped (Default Deny, R-033). NAT is a section of the rule (ADR-0010).
-// Create, edit, delete, reorder (R-009), disable (R-009.2); required fields
-// block save (R-009.1).
+// ordered list of rules. A member Interface may be used next to its Zone
+// (DM-38): for a Flow the applicable RuleSets are evaluated from the most to
+// the least specific and the first matching Policy decides (DM-42, R-014.4);
+// unmatched traffic is dropped (Default Deny, R-033). NAT is a section of
+// the rule (ADR-0010). Create, edit, delete, reorder (R-009), disable
+// (R-009.2); required fields block save (R-009.1).
+// A Policy row has no buttons: every action is in its context menu (right
+// click, or the context-menu key / Shift+F10 on a focused row); double click
+// opens the editor, drag and drop reorders.
 import {
   state, h, icon, mount, objs, find, isAdmin, dot, refChip, save, modal, multiPicker, validationBox,
   confirmDialog, showYAML, yamlEditor, objectForm, newObject, deleteObject, api, fmtNum, colorHex,
-  addrValue, svcValue, findingBadge, findingsFor, metaFields,
+  addrValue, svcValue, findingBadge, findingsFor, metaFields, contextMenu,
 } from '../core.js';
 
 const collapsed = new Set();
@@ -18,6 +23,37 @@ let filter = '';
 const zoneOf = (iface) => objs('Zone').find((z) => z.spec.interfaces.includes(iface))?.metadata.name || '';
 const side = (ref) => find('Zone', ref)?.spec.interfaces || (find('Interface', ref) ? [ref] : []);
 const intraZone = (rs) => find('Interface', rs.spec.from) && find('Interface', rs.spec.to) && zoneOf(rs.spec.from) && zoneOf(rs.spec.from) === zoneOf(rs.spec.to);
+
+// DM-42: the RuleSets that govern a Flow in -> out, most specific first.
+function applicable(i, o) {
+  if (i === o) return [];
+  const zi = zoneOf(i), zo = zoneOf(o);
+  const out = [];
+  for (const [f, t] of [[i, o], [i, zo], [zi, o], [zi, zo]]) {
+    if (!f || !t || f === t) continue;
+    const rs = objs('RuleSet').find((x) => x.spec.from === f && x.spec.to === t);
+    if (rs && !out.includes(rs)) out.push(rs);
+  }
+  return out;
+}
+// Interface pairs governed by more than one RuleSet: where the order matters.
+function layeredPairs() {
+  const ifs = objs('Interface').map((i) => i.metadata.name);
+  const out = [];
+  for (const i of ifs) for (const o of ifs) { const seq = applicable(i, o); if (seq.length > 1) out.push({ i, o, seq }); }
+  return out;
+}
+// Where a RuleSet sits in the sequences it belongs to.
+function precedence(rs) {
+  const before = new Set(), after = new Set();
+  for (const { seq } of layeredPairs()) {
+    const k = seq.indexOf(rs);
+    if (k < 0) continue;
+    seq.slice(0, k).forEach((x) => before.add(x.metadata.name));
+    seq.slice(k + 1).forEach((x) => after.add(x.metadata.name));
+  }
+  return { before: [...before], after: [...after] };
+}
 
 function sideChip(ref) {
   const z = find('Zone', ref);
@@ -45,13 +81,15 @@ const singleHostOrRange = (a) => !!a.spec.range || /\/32$/.test(a.spec.subnet ||
 // of the incoming side, DM-40).
 function addressOptions(ifaces) {
   const out = [];
-  for (const a of objs('Address')) if (fits(a.metadata.name, ifaces)) out.push({ value: a.metadata.name, label: `${a.metadata.name}  ·  ${addrValue(a.spec)}`, group: 'Addresses' });
+  for (const a of objs('Address')) if (a.spec.predefined) out.push({ value: a.metadata.name, label: `${a.metadata.name}  ·  ${addrValue(a.spec)}`, group: 'Predefined' });
+  for (const a of objs('Address')) if (!a.spec.predefined && fits(a.metadata.name, ifaces)) out.push({ value: a.metadata.name, label: `${a.metadata.name}  ·  ${addrValue(a.spec)}${a.spec.fqdn || a.spec.mac ? '  (not in enabled rules yet, DM-43)' : ''}`, group: 'Addresses' });
   for (const g of objs('AddressGroup')) if (fits(g.metadata.name, ifaces)) out.push({ value: g.metadata.name, label: g.metadata.name, group: 'Address groups' });
   return out;
 }
 function serviceOptions() {
   return [
-    ...objs('Service').map((s) => ({ value: s.metadata.name, label: `${s.metadata.name}  ·  ${svcValue(s.spec)}`, group: 'Services' })),
+    ...objs('Service').filter((s) => s.spec.predefined).map((s) => ({ value: s.metadata.name, label: `${s.metadata.name}  ·  every protocol and port`, group: 'Predefined' })),
+    ...objs('Service').filter((s) => !s.spec.predefined).map((s) => ({ value: s.metadata.name, label: `${s.metadata.name}  ·  ${svcValue(s.spec)}`, group: 'Services' })),
     ...objs('ServiceGroup').map((s) => ({ value: s.metadata.name, label: s.metadata.name, group: 'Service groups' })),
   ];
 }
@@ -62,7 +100,7 @@ async function saveRuleSet(rs) {
 
 // ---- rule editor ---------------------------------------------------------------------------------
 
-function editRule(rsName, index) {
+function editRule(rsName, index, at) {
   const rs = structuredClone(find('RuleSet', rsName));
   const isNew = index == null;
   const p = isNew ? { name: '', source: [], destination: [], service: [], action: 'accept' } : structuredClone(rs.spec.rules[index]);
@@ -75,7 +113,7 @@ function editRule(rsName, index) {
   const errBox = h('div');
   const saveBtn = h('button', { class: 'primary', onclick: () => submit() }, isNew ? 'Create' : 'Save');
 
-  const pos = isNew ? rs.spec.rules.length : index;
+  const pos = isNew ? (at ?? rs.spec.rules.length) : index;
   const prefix = `spec.rules[${pos}]`;
   const required = ['name', 'source', 'destination', 'service'];
   const missing = () => {
@@ -95,7 +133,7 @@ function editRule(rsName, index) {
     if (r.action === 'drop') delete r.nat;
     if (r.enabled !== false) delete r.enabled;
     for (const k of ['comment', 'log']) if (!r[k]) delete r[k];
-    if (isNew) z.spec.rules.push(r); else z.spec.rules[index] = r;
+    if (isNew) z.spec.rules.splice(pos, 0, r); else z.spec.rules[index] = r;
     return z;
   }
   function paint() {
@@ -155,9 +193,10 @@ function editRule(rsName, index) {
   const pickers = h('div', { class: 'form-grid full' });
   function renderPickers() {
     const dnat = p.nat?.type === 'dnat';
-    const picker = (key, label, options, help) => field(key, label, ro ? h('div', { class: 'chips' }, p[key].map((s) => refChip(s))) : multiPicker(p[key], options, changed, `select ${key}…`, true), true, help, true);
+    const ns = (key) => (key === 'service' ? 'service' : 'address');
+    const picker = (key, label, options, help) => field(key, label, ro ? h('div', { class: 'chips' }, p[key].map((s) => refChip(s, null, ns(key)))) : multiPicker(p[key], options, changed, `select ${key}…`, ns(key)), true, help, true);
     mount(pickers,
-      picker('source', `Source (enters from ${rs.spec.from})`, addressOptions(fromIfs), `Objects bound to an Interface are listed only if it is in ${rs.spec.from} (DM-12).`),
+      picker('source', `Source (enters from ${rs.spec.from})`, addressOptions(fromIfs), `"any" and "any6" are predefined Addresses. Objects bound to an Interface are listed only if it is in ${rs.spec.from} (DM-12).`),
       picker('destination', dnat ? `Destination before translation (the public address on ${rs.spec.from})` : `Destination (leaves through ${rs.spec.to})`,
         addressOptions(dnat ? fromIfs : toIfs), dnat ? 'A dnat rule matches the address and service before translation (ADR-0010, DM-40).' : null),
       picker('service', 'Service', serviceOptions(), dnat ? 'Explicit when the port is translated (DM-40).' : null));
@@ -182,7 +221,7 @@ function editRule(rsName, index) {
       field('nat', 'NAT', natSel, false, 'Not allowed with drop.'),
       field('log', 'Log', h('select', { disabled: ro, onchange: (e) => { p.log = e.target.value; changed(); } },
         [['', 'security (default)'], ['all', 'all'], ['none', 'none']].map(([v, l]) => h('option', { value: v, selected: (p.log || '') === v }, l))), false,
-        'Stored as in the schema. The PoC Data Plane emits every Flow (R-026); see RA open issue #8.'),
+        'Still in the schema; domain model 0.7 removes it (every Flow is an Event, R-026).'),
       natBox,
       field('enabled', 'State', h('label', { class: 'check' }, h('input', { type: 'checkbox', disabled: ro, checked: p.enabled !== false, onchange: (e) => { p.enabled = e.target.checked; changed(); } }), 'Enabled'),
         false, 'A disabled rule stays in the YAML with enabled: false (R-009.2).')));
@@ -220,14 +259,51 @@ async function toggle(rsName, i) {
   await saveRuleSet(rs);
 }
 
-// From / To: Zones, Interfaces outside any Zone, and Zone members (usable
-// only between two members of the same Zone, DM-38).
+// duplicate inserts a disabled copy right below, with a free name.
+async function duplicate(rsName, i) {
+  const rs = structuredClone(find('RuleSet', rsName));
+  const p = structuredClone(rs.spec.rules[i]);
+  delete p.uuid;
+  const names = new Set(rs.spec.rules.map((r) => r.name));
+  let n = 2;
+  while (names.has(`${p.name}-${n}`)) n++;
+  p.name = `${p.name}-${n}`;
+  p.enabled = false;
+  rs.spec.rules.splice(i + 1, 0, p);
+  await saveRuleSet(rs);
+}
+
+// The context menu of a Policy row: every action of the row lives here.
+function ruleMenu(ev, rs, i, tr) {
+  ev.preventDefault();
+  const name = rs.metadata.name, p = rs.spec.rules[i], n = rs.spec.rules.length, admin = isAdmin();
+  const at = ev.type === 'contextmenu' && ev.clientX ? { x: ev.clientX, y: ev.clientY } : (() => { const r = tr.getBoundingClientRect(); return { x: r.left + 48, y: r.bottom }; })();
+  tr.classList.add('ctx-open');
+  contextMenu(at, `${i + 1} · ${p.name}`, [
+    { label: admin ? 'Edit…' : 'View…', icon: 'edit', kbd: 'Enter', onClick: () => editRule(name, i) },
+    admin && { label: p.enabled === false ? 'Enable' : 'Disable', icon: 'power', onClick: () => toggle(name, i) },
+    admin && { label: 'Duplicate below', icon: 'copy', onClick: () => duplicate(name, i) },
+    admin && '-',
+    admin && { label: 'Move to top', icon: 'top', disabled: i === 0, onClick: () => move(name, i, 0) },
+    admin && { label: 'Move up', icon: 'up', kbd: 'Alt ↑', disabled: i === 0, onClick: () => move(name, i, i - 1) },
+    admin && { label: 'Move down', icon: 'down', kbd: 'Alt ↓', disabled: i === n - 1, onClick: () => move(name, i, i + 1) },
+    admin && { label: 'Move to bottom', icon: 'bottom', disabled: i === n - 1, onClick: () => move(name, i, n - 1) },
+    admin && '-',
+    admin && { label: 'New Policy above', icon: 'insert', onClick: () => editRule(name, null, i) },
+    { label: 'RuleSet YAML', icon: 'code', onClick: () => showYAML('RuleSet', name) },
+    admin && '-',
+    admin && { label: 'Delete…', icon: 'trash', kbd: 'Del', danger: true, onClick: () => removeRule(name, i) },
+  ], () => tr.classList.remove('ctx-open'));
+}
+
+// From / To: Zones and Interfaces. A member Interface may be used next to
+// its Zone (DM-38): its RuleSet is evaluated before the Zone's (DM-42).
 function sideOptions() {
   const out = [{ value: '', label: '— select —' }];
   for (const z of objs('Zone')) out.push({ value: z.metadata.name, label: `${z.metadata.name} (Zone: ${z.spec.interfaces.join(', ')})` });
   for (const i of objs('Interface')) {
     const z = zoneOf(i.metadata.name);
-    out.push({ value: i.metadata.name, label: z ? `${i.metadata.name} (member of ${z}: intra-zone only)` : `${i.metadata.name} (Interface)` });
+    out.push({ value: i.metadata.name, label: z ? `${i.metadata.name} (member of ${z}: evaluated before it)` : `${i.metadata.name} (Interface)` });
   }
   return out;
 }
@@ -236,7 +312,7 @@ function ruleSetForm(rs) {
   const isNew = !rs;
   objectForm({
     kind: 'RuleSet', isNew, obj: rs || newObject('RuleSet', { from: '', to: '', rules: [] }),
-    intro: isNew && h('p', { class: 'sub small', style: { margin: 0 } }, 'One RuleSet per ordered pair; "any" is not allowed. An Interface that belongs to a Zone is referenced through its Zone, except between two members of the same Zone (DM-38).'),
+    intro: isNew && h('p', { class: 'sub small', style: { margin: 0 } }, 'One RuleSet per ordered pair; there is no wildcard Interface. A member Interface may be used next to its Zone: for its traffic the more specific RuleSet is evaluated first, then the Zone\'s (DM-38, DM-42).'),
     fields: [
       ...metaFields({ placeholder: 'internal-to-untrusted' }),
       { key: 'spec.from', label: 'From (where traffic enters)', type: 'select', required: true, immutable: !isNew, options: sideOptions },
@@ -249,38 +325,46 @@ function ruleSetForm(rs) {
 
 function natCell(p) {
   if (!p.nat) return h('span', { class: 'muted' }, '—');
-  if (p.nat.type === 'snat') return h('span', { title: 'Source NAT' }, 'snat ', p.nat.translateIpTo ? refChip(p.nat.translateIpTo) : h('span', { class: 'muted' }, 'masquerade'));
-  return h('span', { class: 'row wrap', style: { gap: '4px' }, title: 'Destination NAT, matched before translation' }, 'dnat →', refChip(p.nat.translateIpTo),
-    p.nat.translateServiceTo && refChip(p.nat.translateServiceTo));
+  if (p.nat.type === 'snat') return h('span', { title: 'Source NAT' }, 'snat ', p.nat.translateIpTo ? refChip(p.nat.translateIpTo, null, 'address') : h('span', { class: 'muted' }, 'masquerade'));
+  return h('span', { class: 'row wrap', style: { gap: '4px' }, title: 'Destination NAT, matched before translation' }, 'dnat →', refChip(p.nat.translateIpTo, null, 'address'),
+    p.nat.translateServiceTo && refChip(p.nat.translateServiceTo, null, 'service'));
 }
 
 function ruleRow(rs, p, i, n) {
   const key = `${rs.metadata.name}/${p.name}`;
   const hits = state.counters?.hits?.[key] || 0;
   const admin = isAdmin();
-  const errs = findingsFor('RuleSet', rs.metadata.name).filter((e) => e.path === `spec.rules[${i}]` || e.path.startsWith(`spec.rules[${i}].`));
-  const tr = h('tr', { class: [p.enabled === false && 'disabled'], draggable: admin ? 'true' : null,
-    ondragstart: (e) => { e.dataTransfer.setData('text/plain', JSON.stringify({ rs: rs.metadata.name, i })); e.dataTransfer.effectAllowed = 'move'; },
+  const name = rs.metadata.name;
+  const errs = findingsFor('RuleSet', name).filter((e) => e.path === `spec.rules[${i}]` || e.path.startsWith(`spec.rules[${i}].`));
+  const tr = h('tr', { class: [p.enabled === false && 'disabled'], tabindex: '0', draggable: admin ? 'true' : null, 'aria-label': `Policy ${i + 1} ${p.name}`,
+    title: 'Right click for actions · double click to edit',
+    ondragstart: (e) => { e.dataTransfer.setData('text/plain', JSON.stringify({ rs: name, i })); e.dataTransfer.effectAllowed = 'move'; },
     ondragover: (e) => { e.preventDefault(); tr.classList.add('drag-over'); },
     ondragleave: () => tr.classList.remove('drag-over'),
-    ondrop: (e) => { e.preventDefault(); tr.classList.remove('drag-over'); try { const d = JSON.parse(e.dataTransfer.getData('text/plain')); if (d.rs === rs.metadata.name) move(d.rs, d.i, i); } catch { /* not ours */ } },
-    ondblclick: () => editRule(rs.metadata.name, i) },
-  h('td', { class: 'num' }, h('span', { class: 'row' }, admin && h('span', { class: 'drag', title: 'Drag to reorder' }, icon('grip')), i + 1)),
-  h('td', null, h('div', { class: 'row wrap' }, h('button', { class: 'link', onclick: () => editRule(rs.metadata.name, i) }, p.name), p.enabled === false && h('span', { class: 'badge' }, 'disabled'),
+    ondrop: (e) => { e.preventDefault(); tr.classList.remove('drag-over'); try { const d = JSON.parse(e.dataTransfer.getData('text/plain')); if (d.rs === name) move(d.rs, d.i, i); } catch { /* not ours */ } },
+    ondblclick: () => editRule(name, i),
+    oncontextmenu: (e) => ruleMenu(e, rs, i, tr),
+    // touch screens have no right click: a tap opens the same menu
+    onclick: (e) => { if (matchMedia('(pointer: coarse)').matches && !e.target.closest('button, a')) ruleMenu(Object.assign(e, { preventDefault() {} }), rs, i, tr); },
+    onkeydown: (e) => {
+      if (e.target !== tr) return;
+      if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) ruleMenu(e, rs, i, tr);
+      else if (e.key === 'Enter') { e.preventDefault(); editRule(name, i); }
+      else if (admin && e.altKey && e.key === 'ArrowUp' && i > 0) { e.preventDefault(); move(name, i, i - 1); }
+      else if (admin && e.altKey && e.key === 'ArrowDown' && i < n - 1) { e.preventDefault(); move(name, i, i + 1); }
+      else if (admin && e.key === 'Delete') { e.preventDefault(); removeRule(name, i); }
+    } },
+  h('td', { class: 'num' }, h('span', { class: 'row', style: { justifyContent: 'flex-end' } }, admin && h('span', { class: 'drag', 'aria-hidden': 'true' }, icon('grip')), h('span', { class: 'pos' }, String(i + 1).padStart(2, '0')))),
+  h('td', null, h('div', { class: 'row wrap' }, h('span', { style: { fontWeight: 500 } }, p.name), p.enabled === false && h('span', { class: 'badge' }, 'disabled'),
     errs.length ? h('span', { class: ['badge', errs.some((e) => e.severity === 'error') ? 'bad' : 'warn'], title: errs.map((e) => e.reason).join('\n') }, errs.some((e) => e.severity === 'error') ? 'error' : 'warning') : null),
   p.comment && h('div', { class: 'small muted' }, p.comment)),
-  h('td', null, h('div', { class: 'row wrap' }, p.source.map((s) => refChip(s)))),
-  h('td', null, h('div', { class: 'row wrap' }, p.destination.map((s) => refChip(s)))),
-  h('td', null, h('div', { class: 'row wrap' }, p.service.map((s) => refChip(s)))),
-  h('td', null, h('span', { class: `action-${p.action}` }, p.action === 'accept' ? '✓ accept' : '✕ drop')),
+  h('td', null, h('div', { class: 'row wrap', style: { gap: '4px' } }, p.source.map((s) => refChip(s, null, 'address')))),
+  h('td', null, h('div', { class: 'row wrap', style: { gap: '4px' } }, p.destination.map((s) => refChip(s, null, 'address')))),
+  h('td', null, h('div', { class: 'row wrap', style: { gap: '4px' } }, p.service.map((s) => refChip(s, null, 'service')))),
+  h('td', null, h('span', { class: `action-${p.action}` }, p.action)),
   h('td', { class: 'small' }, natCell(p)),
   h('td', { class: 'small muted' }, p.log || 'security'),
-  h('td', { class: 'num', 'data-hit': key, title: 'Flows matched since start (simulated Data Plane)' }, fmtNum(hits)),
-  h('td', { class: 'num' }, admin && h('span', { class: 'row', style: { justifyContent: 'flex-end', gap: '0' } },
-    h('button', { class: 'ghost', title: 'Move up', 'aria-label': 'Move up', disabled: i === 0, onclick: () => move(rs.metadata.name, i, i - 1) }, icon('up')),
-    h('button', { class: 'ghost', title: 'Move down', 'aria-label': 'Move down', disabled: i === n - 1, onclick: () => move(rs.metadata.name, i, i + 1) }, icon('down')),
-    h('button', { class: 'ghost', title: p.enabled === false ? 'Enable' : 'Disable', 'aria-label': 'Enable or disable', onclick: () => toggle(rs.metadata.name, i) }, icon('power')),
-    h('button', { class: 'ghost', title: 'Delete', 'aria-label': 'Delete', onclick: () => removeRule(rs.metadata.name, i) }, icon('trash')))));
+  h('td', { class: 'num', 'data-hit': key, title: 'Flows matched since start (simulated Data Plane)' }, fmtNum(hits)));
   return tr;
 }
 
@@ -298,28 +382,59 @@ function ruleSetCard(rs) {
   const limit = state.config.limits?.policiesPerRuleSet;
   const enabled = all.filter((p) => p.enabled !== false).length;
   const pairs = side(rs.spec.from).flatMap((f) => side(rs.spec.to).filter((t) => t !== f).map((t) => `${f} → ${t}`));
+  const prec = precedence(rs);
+  const headMenu = (e) => {
+    e.preventDefault();
+    contextMenu({ x: e.clientX, y: e.clientY }, `RuleSet ${name}`, [
+      isAdmin() && { label: 'New Policy', icon: 'plus', onClick: () => editRule(name) },
+      isAdmin() && { label: 'Edit RuleSet…', icon: 'edit', onClick: () => ruleSetForm(rs) },
+      { label: 'Show YAML', icon: 'code', onClick: () => showYAML('RuleSet', name) },
+      isAdmin() && { label: 'Edit YAML…', icon: 'code', onClick: () => yamlEditor('RuleSet', name) },
+      isAdmin() && '-',
+      isAdmin() && { label: 'Delete RuleSet…', icon: 'trash', danger: true, onClick: () => deleteObject('RuleSet', name) },
+    ]);
+  };
   return h('section', { class: ['card', 'zone', isCol && 'collapsed'] },
-    h('div', { class: 'head', onclick: (e) => { if (e.target.closest('button')) return; isCol ? collapsed.delete(name) : collapsed.add(name); window.songbirdRerender(); } },
+    h('div', { class: 'head', oncontextmenu: headMenu, onclick: (e) => { if (e.target.closest('button')) return; isCol ? collapsed.delete(name) : collapsed.add(name); window.songbirdRerender(); } },
       icon('chev', 'chev'),
       rs.metadata.color && h('span', { class: 'stripe', style: { background: colorHex(rs.metadata.color) } }),
       h('h2', null, name),
       h('span', { class: 'flow', title: `Interface pairs: ${pairs.join(', ')}` }, sideChip(rs.spec.from), icon('arrow'), sideChip(rs.spec.to)),
-      intraZone(rs) && h('span', { class: 'badge outline', title: 'Both Interfaces belong to the same Zone (DM-38)' }, `intra-zone ${zoneOf(rs.spec.from)}`),
+      intraZone(rs) && h('span', { class: 'badge outline', title: 'Both Interfaces belong to the same Zone: without a match, intraZoneTraffic decides (DM-39)' }, `inside ${zoneOf(rs.spec.from)}`),
+      prec.after.length > 0 && h('span', { class: 'badge accent', title: `Evaluated before ${prec.after.join(', ')} for the shared Interface pairs (DM-42)` }, `before ${prec.after.join(', ')}`),
+      prec.before.length > 0 && h('span', { class: 'badge outline', title: `Fallback: ${prec.before.join(', ')} is evaluated first for the shared Interface pairs (DM-42)` }, `after ${prec.before.join(', ')}`),
       h('span', { class: 'badge outline', title: `enabled Policies / per-RuleSet limit (DM-36, ADR-0006)` }, `${enabled} / ${fmtNum(limit)}`),
       findingBadge('RuleSet', name),
       rs.metadata.comment && h('span', { class: 'small muted', style: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '360px' } }, rs.metadata.comment),
       h('span', { class: 'spacer' }),
-      h('button', { class: 'ghost sm', onclick: () => showYAML('RuleSet', name), title: 'Show the YAML file', 'aria-label': 'Show YAML' }, icon('code')),
-      isAdmin() && h('button', { class: 'ghost sm', onclick: () => ruleSetForm(rs), title: 'Edit RuleSet', 'aria-label': 'Edit RuleSet' }, icon('edit')),
-      isAdmin() && h('button', { class: 'ghost sm', onclick: () => deleteObject('RuleSet', name), title: 'Delete RuleSet', 'aria-label': 'Delete RuleSet' }, icon('trash')),
-      isAdmin() && h('button', { class: 'sm', onclick: () => editRule(name) }, icon('plus'), 'Policy')),
+      isAdmin() && h('button', { class: 'sm', onclick: () => editRule(name), title: 'Right click the header for the RuleSet actions' }, icon('plus'), 'Policy')),
     !isCol && h('div', { class: 'table-wrap' }, h('table', { class: 'policies' },
-      h('colgroup', null, ['56px', '14%', '16%', '16%', '13%', '100px', '14%', '72px', '60px', '140px'].map((w) => h('col', { style: { width: w } }))),
-      h('thead', null, h('tr', null, ['#', 'Name', 'Source', 'Destination', 'Service', 'Action', 'NAT', 'Log', 'Hits', ''].map((t, k) => h('th', { class: [0, 8].includes(k) && 'num' }, t)))),
+      h('colgroup', null, ['64px', '15%', '17%', '17%', '14%', '112px', '15%', '72px', '72px'].map((w) => h('col', { style: { width: w } }))),
+      h('thead', null, h('tr', null, ['#', 'Name', 'Source', 'Destination', 'Service', 'Action', 'NAT', 'Log', 'Hits'].map((t, k) => h('th', { class: [0, 8].includes(k) && 'num' }, t)))),
       h('tbody', null,
         shown.map(([p, i]) => ruleRow(rs, p, i, all.length)),
-        h('tr', { class: 'implicit' }, h('td', { class: 'num' }, '—'), h('td', null, 'Default Deny'), h('td', null, 'any'), h('td', null, 'any'), h('td', null, 'any'),
-          h('td', null, h('span', { class: 'action-drop' }, '✕ drop')), h('td', { colspan: 4, class: 'small' }, all.length ? 'implicit, logged (DM-09)' : 'implicit, logged (DM-09) — this RuleSet is empty on purpose'))))));
+        h('tr', { class: 'implicit' }, h('td', { class: 'num' }, '—'), h('td', null, prec.after.length ? 'Next RuleSet' : 'Default Deny'), h('td', null, 'any'), h('td', null, 'any'), h('td', null, 'any'),
+          h('td', null, prec.after.length ? h('span', { class: 'muted small' }, '→') : h('span', { class: 'action-drop' }, 'drop')),
+          h('td', { colspan: 3, class: 'small' }, prec.after.length ? `no match: evaluation continues in ${prec.after.join(', ')} (DM-42)` : all.length ? 'implicit, logged (DM-09)' : 'implicit, logged (DM-09) — this RuleSet is empty on purpose'))))));
+}
+
+// R-046.3: for every pair governed by several RuleSets, show the order.
+function evaluationOrder() {
+  const pairs = layeredPairs();
+  if (!pairs.length) return null;
+  return h('section', { class: 'card', style: { marginBottom: '24px' } },
+    h('div', { class: 'head' }, h('h2', null, 'Evaluation order'), h('span', { class: 'muted small' }, 'Interface pairs governed by more than one RuleSet: the first matching Policy across the sequence decides (DM-42, R-046.3)')),
+    h('div', { class: 'table-wrap' }, h('table', null,
+      h('thead', null, h('tr', null, h('th', null, 'Flow'), h('th', null, 'RuleSets, most specific first'))),
+      h('tbody', null, pairs.map(({ i, o, seq }) => {
+        const z = zoneOf(i) && zoneOf(i) === zoneOf(o) ? zoneOf(i) : '';
+        const last = z ? `intraZoneTraffic ${find('Zone', z)?.spec.intraZoneTraffic || 'deny'}` : 'Default Deny';
+        const steps = seq.map((rs, k) => [k > 0 && icon('arrow'), h('span', { class: 'step' }, String(k + 1).padStart(2, '0')),
+          h('span', { class: 'chip' }, dot(rs.metadata.color), rs.metadata.name)]);
+        return h('tr', null,
+          h('td', { class: 'nowrap' }, h('span', { class: 'row' }, refChip(i), icon('arrow'), refChip(o))),
+          h('td', null, h('div', { class: 'order' }, steps, icon('arrow'), h('span', { class: 'muted' }, last))));
+      })))));
 }
 
 function unruledPairs() {
@@ -340,12 +455,14 @@ export default {
       oninput: (e) => { filter = e.target.value; const pos = e.target.selectionStart; window.songbirdRerender(); const s = root.querySelector('.page-head input'); s?.focus(); s?.setSelectionRange(pos, pos); } });
     mount(root,
       h('div', { class: 'page-head' },
-        h('div', null, h('h1', null, 'Policies'), h('p', null, 'One section per RuleSet: the ordered rules for traffic entering from an Interface or Zone and leaving through another. The first match wins; unmatched traffic is dropped.')),
+        h('div', null, h('h1', null, 'Policies'), h('p', null, 'One section per RuleSet: the ordered rules for traffic entering from an Interface or Zone and leaving through another. A member Interface is evaluated before its Zone; the first match wins; unmatched traffic is dropped.')),
         h('span', { class: 'spacer' }), search,
         h('button', { onclick: () => { sets.forEach((z) => collapsed.add(z.metadata.name)); window.songbirdRerender(); } }, 'Collapse all'),
         isAdmin() && h('button', { onclick: () => yamlEditor('RuleSet', '', { isNew: true, template: `apiVersion: "config.songbird-fw.com/v1alpha1"\nkind: "RuleSet"\nmetadata:\n  name: ""\nspec:\n  from: ""\n  to: ""\n  rules: []\n` }) }, icon('code'), 'RuleSet from YAML'),
         isAdmin() && h('button', { class: 'primary', onclick: () => ruleSetForm() }, icon('plus'), 'RuleSet')),
-      h('div', { class: 'row wrap', style: { marginBottom: '12px' } }, unruledPairs(), h('span', { class: 'muted small' }, 'Pairs without a RuleSet: Default Deny (R-033).')),
+      h('div', { class: 'row wrap', style: { marginBottom: '16px' } }, unruledPairs(), h('span', { class: 'muted small' }, 'Pairs without a RuleSet: Default Deny (R-033).'), h('span', { class: 'spacer' }),
+        h('span', { class: 'hint' }, 'Policy actions:', h('kbd', null, 'right click'), 'or', h('kbd', null, 'Shift F10'), '· edit', h('kbd', null, 'double click'), '· reorder', h('kbd', null, 'drag'))),
+      evaluationOrder(),
       h('div', { class: 'stack' }, sets.length ? sets.map(ruleSetCard) : h('div', { class: 'card empty' }, 'No RuleSets yet: all forwarded traffic is dropped.')));
   },
   refresh() { // update hit counters in place, keeping focus and scroll
