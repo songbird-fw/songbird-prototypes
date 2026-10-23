@@ -12,7 +12,7 @@
 import {
   state, h, icon, mount, objs, find, isAdmin, dot, refChip, save, modal, multiPicker, validationBox,
   confirmDialog, showYAML, yamlEditor, objectForm, newObject, deleteObject, api, fmtNum, colorHex,
-  addrValue, svcValue, findingBadge, findingsFor, metaFields, contextMenu,
+  addrValue, svcValue, findingBadge, findingsFor, metaFields, contextMenu, colorStyle,
 } from '../core.js';
 
 const collapsed = new Set();
@@ -58,7 +58,7 @@ function precedence(rs) {
 function sideChip(ref) {
   const z = find('Zone', ref);
   const title = z ? `Zone: ${z.spec.interfaces.join(', ')}` : find('Interface', ref) ? `Interface ${ref}` : 'missing';
-  return h('span', { class: ['chip', z && 'group'], title }, dot((z || find('Interface', ref))?.metadata.color), ref);
+  return h('span', { class: ['chip', z && 'group'], title }, ref);
 }
 
 // ---- address and service expansion (as the Validator does it) ------------------------------------
@@ -209,7 +209,7 @@ function editRule(rsName, index, at) {
   natSel.disabled = ro || p.action === 'drop';
 
   const body = h('div', { class: 'stack' },
-    h('div', { class: 'row sub wrap' }, 'RuleSet', dot(rs.metadata.color), h('strong', null, rs.metadata.name), h('span', { class: 'muted' }, '·'), sideChip(rs.spec.from), icon('arrow'), sideChip(rs.spec.to),
+    h('div', { class: 'row sub wrap' }, 'RuleSet', h('strong', null, rs.metadata.name), h('span', { class: 'muted' }, '·'), sideChip(rs.spec.from), icon('arrow'), sideChip(rs.spec.to),
       h('span', { class: 'spacer' }), h('span', { class: 'small muted' }, isNew ? `will be position ${pos + 1}` : `position ${index + 1}`)),
     errBox,
     h('div', { class: 'form-grid' },
@@ -354,16 +354,15 @@ function ruleRow(rs, p, i, n) {
       else if (admin && e.altKey && e.key === 'ArrowDown' && i < n - 1) { e.preventDefault(); move(name, i, i + 1); }
       else if (admin && e.key === 'Delete') { e.preventDefault(); removeRule(name, i); }
     } },
-  h('td', { class: 'num' }, h('span', { class: 'row', style: { justifyContent: 'flex-end' } }, admin && h('span', { class: 'drag', 'aria-hidden': 'true' }, icon('grip')), h('span', { class: 'pos' }, String(i + 1).padStart(2, '0')))),
+  h('td', { class: 'num' }, h('span', { class: 'row', style: { justifyContent: 'flex-end' } }, admin && h('span', { class: 'drag', 'aria-hidden': 'true' }, icon('grip')), h('span', { class: 'pos' }, String(i + 1)))),
   h('td', null, h('div', { class: 'row wrap' }, h('span', { style: { fontWeight: 500 } }, p.name), p.enabled === false && h('span', { class: 'badge' }, 'disabled'),
     errs.length ? h('span', { class: ['badge', errs.some((e) => e.severity === 'error') ? 'bad' : 'warn'], title: errs.map((e) => e.reason).join('\n') }, errs.some((e) => e.severity === 'error') ? 'error' : 'warning') : null),
-  p.comment && h('div', { class: 'small muted' }, p.comment)),
+  (p.comment || p.log) && h('div', { class: 'small muted' }, [p.comment, p.log && `log ${p.log}`].filter(Boolean).join(' · '))),
   h('td', null, h('div', { class: 'row wrap', style: { gap: '4px' } }, p.source.map((s) => refChip(s, null, 'address')))),
   h('td', null, h('div', { class: 'row wrap', style: { gap: '4px' } }, p.destination.map((s) => refChip(s, null, 'address')))),
   h('td', null, h('div', { class: 'row wrap', style: { gap: '4px' } }, p.service.map((s) => refChip(s, null, 'service')))),
   h('td', null, h('span', { class: `action-${p.action}` }, p.action)),
   h('td', { class: 'small' }, natCell(p)),
-  h('td', { class: 'small muted' }, p.log || 'security'),
   h('td', { class: 'num', 'data-hit': key, title: 'Flows matched since start (simulated Data Plane)' }, fmtNum(hits)));
   return tr;
 }
@@ -394,47 +393,38 @@ function ruleSetCard(rs) {
       isAdmin() && { label: 'Delete RuleSet…', icon: 'trash', danger: true, onClick: () => deleteObject('RuleSet', name) },
     ]);
   };
-  return h('section', { class: ['card', 'zone', isCol && 'collapsed'] },
-    h('div', { class: 'head', oncontextmenu: headMenu, onclick: (e) => { if (e.target.closest('button')) return; isCol ? collapsed.delete(name) : collapsed.add(name); window.songbirdRerender(); } },
+  const nearLimit = enabled > 0.8 * limit;
+  const rest = prec.after.length ? `Anything else continues in ${prec.after.join(', ')}` : 'Anything else is dropped and logged';
+  return h('section', { class: ['zone', isCol && 'collapsed'] },
+    h('div', { class: 'head', oncontextmenu: headMenu, title: 'Click to fold · right click for RuleSet actions', onclick: (e) => { if (e.target.closest('button')) return; isCol ? collapsed.delete(name) : collapsed.add(name); window.songbirdRerender(); } },
       icon('chev', 'chev'),
-      rs.metadata.color && h('span', { class: 'stripe', style: { background: colorHex(rs.metadata.color) } }),
-      h('h2', null, name),
+      h('h2', { title: rs.metadata.comment || null }, name),
       h('span', { class: 'flow', title: `Interface pairs: ${pairs.join(', ')}` }, sideChip(rs.spec.from), icon('arrow'), sideChip(rs.spec.to)),
-      intraZone(rs) && h('span', { class: 'badge outline', title: 'Both Interfaces belong to the same Zone: without a match, intraZoneTraffic decides (DM-39)' }, `inside ${zoneOf(rs.spec.from)}`),
-      prec.after.length > 0 && h('span', { class: 'badge accent', title: `Evaluated before ${prec.after.join(', ')} for the shared Interface pairs (DM-42)` }, `before ${prec.after.join(', ')}`),
-      prec.before.length > 0 && h('span', { class: 'badge outline', title: `Fallback: ${prec.before.join(', ')} is evaluated first for the shared Interface pairs (DM-42)` }, `after ${prec.before.join(', ')}`),
-      h('span', { class: 'badge outline', title: `enabled Policies / per-RuleSet limit (DM-36, ADR-0006)` }, `${enabled} / ${fmtNum(limit)}`),
+      prec.before.length > 0 && h('span', { class: 'small muted', title: 'DM-42' }, `after ${prec.before.join(', ')}`),
+      prec.after.length > 0 && h('span', { class: 'small muted', title: 'DM-42' }, `before ${prec.after.join(', ')}`),
+      nearLimit && h('span', { class: 'badge warn', title: 'Enabled Policies / per-RuleSet limit (DM-36, ADR-0006)' }, `${enabled} / ${fmtNum(limit)}`),
       findingBadge('RuleSet', name),
-      rs.metadata.comment && h('span', { class: 'small muted', style: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '360px' } }, rs.metadata.comment),
       h('span', { class: 'spacer' }),
-      isAdmin() && h('button', { class: 'sm', onclick: () => editRule(name), title: 'Right click the header for the RuleSet actions' }, icon('plus'), 'Policy')),
+      isAdmin() && h('button', { class: 'ghost sm', onclick: () => editRule(name) }, icon('plus'), 'Policy')),
     !isCol && h('div', { class: 'table-wrap' }, h('table', { class: 'policies' },
-      h('colgroup', null, ['64px', '15%', '17%', '17%', '14%', '112px', '15%', '72px', '72px'].map((w) => h('col', { style: { width: w } }))),
-      h('thead', null, h('tr', null, ['#', 'Name', 'Source', 'Destination', 'Service', 'Action', 'NAT', 'Log', 'Hits'].map((t, k) => h('th', { class: [0, 8].includes(k) && 'num' }, t)))),
+      h('colgroup', null, ['56px', '18%', '17%', '17%', '15%', '92px', '17%', '64px'].map((w) => h('col', { style: { width: w } }))),
+      all.length > 0 && h('thead', null, h('tr', null, ['#', 'Name', 'Source', 'Destination', 'Service', 'Action', 'NAT', 'Hits'].map((t, k) => h('th', { class: [0, 7].includes(k) && 'num' }, t)))),
       h('tbody', null,
         shown.map(([p, i]) => ruleRow(rs, p, i, all.length)),
-        h('tr', { class: 'implicit' }, h('td', { class: 'num' }, '—'), h('td', null, prec.after.length ? 'Next RuleSet' : 'Default Deny'), h('td', null, 'any'), h('td', null, 'any'), h('td', null, 'any'),
-          h('td', null, prec.after.length ? h('span', { class: 'muted small' }, '→') : h('span', { class: 'action-drop' }, 'drop')),
-          h('td', { colspan: 3, class: 'small' }, prec.after.length ? `no match: evaluation continues in ${prec.after.join(', ')} (DM-42)` : all.length ? 'implicit, logged (DM-09)' : 'implicit, logged (DM-09) — this RuleSet is empty on purpose'))))));
+        h('tr', { class: 'implicit' }, h('td'), h('td', { colspan: 7 }, rest))))));
 }
 
 // R-046.3: for every pair governed by several RuleSets, show the order.
 function evaluationOrder() {
   const pairs = layeredPairs();
   if (!pairs.length) return null;
-  return h('section', { class: 'card', style: { marginBottom: '24px' } },
-    h('div', { class: 'head' }, h('h2', null, 'Evaluation order'), h('span', { class: 'muted small' }, 'Interface pairs governed by more than one RuleSet: the first matching Policy across the sequence decides (DM-42, R-046.3)')),
-    h('div', { class: 'table-wrap' }, h('table', null,
-      h('thead', null, h('tr', null, h('th', null, 'Flow'), h('th', null, 'RuleSets, most specific first'))),
-      h('tbody', null, pairs.map(({ i, o, seq }) => {
-        const z = zoneOf(i) && zoneOf(i) === zoneOf(o) ? zoneOf(i) : '';
-        const last = z ? `intraZoneTraffic ${find('Zone', z)?.spec.intraZoneTraffic || 'deny'}` : 'Default Deny';
-        const steps = seq.map((rs, k) => [k > 0 && icon('arrow'), h('span', { class: 'step' }, String(k + 1).padStart(2, '0')),
-          h('span', { class: 'chip' }, dot(rs.metadata.color), rs.metadata.name)]);
-        return h('tr', null,
-          h('td', { class: 'nowrap' }, h('span', { class: 'row' }, refChip(i), icon('arrow'), refChip(o))),
-          h('td', null, h('div', { class: 'order' }, steps, icon('arrow'), h('span', { class: 'muted' }, last))));
-      })))));
+  return h('div', { class: 'eval-order', title: 'R-046.3, DM-42' }, pairs.map(({ i, o, seq }) => {
+    const z = zoneOf(i) && zoneOf(i) === zoneOf(o) ? zoneOf(i) : '';
+    const last = z ? `intraZoneTraffic ${find('Zone', z)?.spec.intraZoneTraffic || 'deny'}` : 'Default Deny';
+    return h('p', null, h('strong', null, `${i} → ${o}`), ' is checked against ',
+      seq.map((rs, k) => [k > 0 && (k === seq.length - 1 ? ', then ' : ', '), h('span', null, rs.metadata.name)]),
+      `, then ${last}.`);
+  }));
 }
 
 function unruledPairs() {
@@ -455,15 +445,16 @@ export default {
       oninput: (e) => { filter = e.target.value; const pos = e.target.selectionStart; window.songbirdRerender(); const s = root.querySelector('.page-head input'); s?.focus(); s?.setSelectionRange(pos, pos); } });
     mount(root,
       h('div', { class: 'page-head' },
-        h('div', null, h('h1', null, 'Policies'), h('p', null, 'One section per RuleSet: the ordered rules for traffic entering from an Interface or Zone and leaving through another. A member Interface is evaluated before its Zone; the first match wins; unmatched traffic is dropped.')),
-        h('span', { class: 'spacer' }), search,
-        h('button', { onclick: () => { sets.forEach((z) => collapsed.add(z.metadata.name)); window.songbirdRerender(); } }, 'Collapse all'),
-        isAdmin() && h('button', { onclick: () => yamlEditor('RuleSet', '', { isNew: true, template: `apiVersion: "config.songbird-fw.com/v1alpha1"\nkind: "RuleSet"\nmetadata:\n  name: ""\nspec:\n  from: ""\n  to: ""\n  rules: []\n` }) }, icon('code'), 'RuleSet from YAML'),
+        h('div', null, h('h1', null, 'Policies'), h('p', null, 'Rules are grouped by the Interfaces or Zones the traffic crosses. The first matching rule decides; anything unmatched is dropped. Right click a rule for its actions.')),
+        search,
+        h('button', { class: 'ghost', title: 'More', 'aria-label': 'More actions', onclick: (e) => { const r = e.currentTarget.getBoundingClientRect(); contextMenu({ x: r.right - 230, y: r.bottom + 4 }, null, [
+          { label: 'Collapse all', icon: 'chev', onClick: () => { sets.forEach((z) => collapsed.add(z.metadata.name)); window.songbirdRerender(); } },
+          { label: 'Expand all', icon: 'chev', onClick: () => { collapsed.clear(); window.songbirdRerender(); } },
+          isAdmin() && { label: 'New RuleSet from YAML…', icon: 'code', onClick: () => yamlEditor('RuleSet', '', { isNew: true, template: `apiVersion: "config.songbird-fw.com/v1alpha1"\nkind: "RuleSet"\nmetadata:\n  name: ""\nspec:\n  from: ""\n  to: ""\n  rules: []\n` }) },
+        ]); } }, icon('more')),
         isAdmin() && h('button', { class: 'primary', onclick: () => ruleSetForm() }, icon('plus'), 'RuleSet')),
-      h('div', { class: 'row wrap', style: { marginBottom: '16px' } }, unruledPairs(), h('span', { class: 'muted small' }, 'Pairs without a RuleSet: Default Deny (R-033).'), h('span', { class: 'spacer' }),
-        h('span', { class: 'hint' }, 'Policy actions:', h('kbd', null, 'right click'), 'or', h('kbd', null, 'Shift F10'), '· edit', h('kbd', null, 'double click'), '· reorder', h('kbd', null, 'drag'))),
       evaluationOrder(),
-      h('div', { class: 'stack' }, sets.length ? sets.map(ruleSetCard) : h('div', { class: 'card empty' }, 'No RuleSets yet: all forwarded traffic is dropped.')));
+      h('div', { class: 'zones' }, sets.length ? sets.map(ruleSetCard) : h('div', { class: 'empty' }, 'No RuleSets yet: all forwarded traffic is dropped.')));
   },
   refresh() { // update hit counters in place, keeping focus and scroll
     for (const td of document.querySelectorAll('[data-hit]')) td.textContent = fmtNum(state.counters?.hits?.[td.dataset.hit] || 0);

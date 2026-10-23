@@ -10,24 +10,21 @@ import diagnostics from './pages/diagnostics.js';
 import audit from './pages/audit.js';
 import users from './pages/users.js';
 
-// Every page is a sheet of the drawing set: M = monitor, C = configuration,
-// A = administration. The code is shown in the hover label and above the title.
 const ROUTES = [
   { group: 'Monitor' },
-  { path: 'dashboard', code: 'M-01', label: 'Dashboard', icon: 'gauge', page: dashboard },
-  { path: 'traffic', code: 'M-02', label: 'Live traffic', icon: 'activity', page: traffic },
-  { path: 'diagnostics', code: 'M-03', label: 'Diagnostics', icon: 'heart', page: diagnostics },
+  { path: 'dashboard', label: 'Dashboard', icon: 'gauge', page: dashboard },
+  { path: 'traffic', label: 'Live traffic', icon: 'activity', page: traffic },
+  { path: 'diagnostics', label: 'Diagnostics', icon: 'heart', page: diagnostics },
   { group: 'Configuration' },
-  { path: 'policies', code: 'C-01', label: 'Policies', icon: 'shield', page: policies },
-  { path: 'network', code: 'C-02', label: 'Network', icon: 'network', page: network },
-  { path: 'objects', code: 'C-03', label: 'Objects', icon: 'box', page: objects },
-  { path: 'system', code: 'C-04', label: 'System', icon: 'cog', page: system },
-  { path: 'changes', code: 'C-05', label: 'Changes', icon: 'history', page: changes },
+  { path: 'policies', label: 'Policies', icon: 'shield', page: policies },
+  { path: 'network', label: 'Network', icon: 'network', page: network },
+  { path: 'objects', label: 'Objects', icon: 'box', page: objects },
+  { path: 'system', label: 'System', icon: 'cog', page: system },
+  { path: 'changes', label: 'Changes', icon: 'history', page: changes },
   { group: 'Administration' },
-  { path: 'users', code: 'A-01', label: 'Users', icon: 'users', page: users },
-  { path: 'audit', code: 'A-02', label: 'Audit log', icon: 'file', page: audit },
+  { path: 'users', label: 'Users', icon: 'users', page: users },
+  { path: 'audit', label: 'Audit log', icon: 'file', page: audit },
 ];
-const groupOf = (r) => { let g = ''; for (const x of ROUTES) { if (x.group) g = x.group; if (x === r) return g; } return g; };
 
 const app = document.getElementById('app');
 let current = null;     // current route
@@ -75,11 +72,11 @@ function loginPage() {
       btn.disabled = false; pass.select();
     }
   } },
-  h('div', { class: 'title' }, h('span', { class: 'logo' }, icon('shield')), h('h1', null, 'Songbird', h('small', null, 'Web UI proof of concept · schema v1alpha1'))),
+  h('div', { class: 'title' }, h('span', { class: 'logo' }, icon('shield')), h('div', null, h('h1', null, 'Songbird'), h('small', null, 'Sign in to manage the firewall.'))),
   h('div', { class: 'field' }, h('label', null, 'Username'), user),
   h('div', { class: 'field' }, h('label', null, 'Password'), pass),
   err, btn,
-  h('div', { class: 'muted small' }, 'Demo accounts: admin / songbird (admin), auditor / auditor (read-only).'));
+  h('div', { class: 'muted small' }, 'Demo accounts: admin / songbird, or auditor / auditor for read-only access.'));
   mount(app, h('div', { class: 'login' }, form));
   setTimeout(() => user.focus(), 0);
 }
@@ -93,20 +90,14 @@ function shell() {
   const nav = h('nav', { class: 'nav', 'aria-label': 'Main' }, ROUTES.map((r) => r.group
     ? h('div', { class: 'group', role: 'separator', 'aria-label': r.group })
     : h('a', { href: `#/${r.path}`, 'data-path': r.path, 'aria-label': r.label },
-      icon(r.icon), h('span', { class: 'label', 'aria-hidden': 'true' }, h('span', { class: 'code' }, r.code), r.label))));
+      icon(r.icon), h('span', { class: 'label', 'aria-hidden': 'true' }, r.label))));
   mount(app, h('div', { class: 'shell' },
     h('aside', { class: 'side' },
       h('a', { class: 'brand', href: '#/dashboard', 'aria-label': 'Songbird', title: 'Songbird — configuration is YAML in Git, every save is a commit' }, h('span', { class: 'logo' }, icon('shield'))),
-      nav,
-      h('div', { class: 'foot', title: 'config.songbird-fw.com/v1alpha1' }, 'v1', h('br'), 'alpha1')),
+      nav),
     h('div', { class: 'main' }, topStatus, banner, content)));
 }
 
-// The sheet number above the title of every page (title block).
-function decorate(r) {
-  const head = content?.querySelector('.page-head > div');
-  if (head && !head.querySelector('.sheet-no')) head.prepend(h('span', { class: 'sheet-no' }, `${r.code} · ${groupOf(r)}`));
-}
 
 function stateBadge(s) {
   if (!s) return h('span', { class: 'badge' }, '…');
@@ -163,7 +154,6 @@ function route() {
   current = r;
   document.title = `${r.label} · Songbird`;
   leave = r.page.render(content, rest) || null;
-  decorate(r);
   renderTop();
 }
 
@@ -186,7 +176,6 @@ function rerender() {
   if (current && !document.querySelector('.overlay')) {
     if (leave) leave();
     leave = current.page.render(content, location.hash.split('/').slice(2)) || null;
-    decorate(current);
   }
 }
 

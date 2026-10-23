@@ -27,7 +27,7 @@ export function h(tag, attrs, ...children) {
   for (const [k, v] of Object.entries(attrs || {})) {
     if (v == null || v === false || k === 'svg') continue;
     if (k.startsWith('on') && typeof v === 'function') el.addEventListener(k.slice(2), v);
-    else if (k === 'style' && typeof v === 'object') Object.assign(el.style, v);
+    else if (k === 'style' && typeof v === 'object') for (const [sk, sv] of Object.entries(v)) { if (sk.startsWith('--')) el.style.setProperty(sk, sv); else el.style[sk] = sv; }
     else if (k === 'class') el.setAttribute('class', Array.isArray(v) ? v.filter(Boolean).join(' ') : v);
     else if (k === 'value' && 'value' in el && tag !== 'option') el.value = v;
     else if (k === 'checked' || k === 'selected' || k === 'disabled') el[k] = !!v;
@@ -81,6 +81,13 @@ const ICONS = {
   download: 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M7 10l5 5 5-5 M12 15V3',
   upload: 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M17 8l-5-5-5 5 M12 3v12',
   copy: 'M9 9h11v11H9z M5 15H4V4h11v1',
+  more: 'M5 12h.01 M12 12h.01 M19 12h.01',
+  // object kinds, shown before names: one circle = one Address, three = a group;
+  // one square = one Service, two = a group
+  address: 'M5.5 12a6.5 6.5 0 1 0 13 0a6.5 6.5 0 1 0 -13 0',
+  addressGroup: 'M2.5 7.5a3.5 3.5 0 1 0 7 0a3.5 3.5 0 1 0 -7 0 M14.5 7.5a3.5 3.5 0 1 0 7 0a3.5 3.5 0 1 0 -7 0 M8.5 16.5a3.5 3.5 0 1 0 7 0a3.5 3.5 0 1 0 -7 0',
+  service: 'M5.5 5.5h13v13h-13z',
+  serviceGroup: 'M3 3h11v11H3z M10 10h11v11H10z',
   top: 'M5 4h14 M12 20V8 M6 14l6-6 6 6',
   bottom: 'M5 20h14 M12 4v12 M6 10l6 6 6-6',
   insert: 'M12 5v14 M5 12h14 M3 3h4 M17 3h4',
@@ -143,6 +150,12 @@ export const svcValue = (spec) => (spec?.protocols || []).map(protoEntry).join('
 // Color's comment.
 
 export function colorHex(name) { return name ? find('Color', name)?.spec.hex || null : null; }
+// Objects are coloured like in FortiGate: the name itself takes the colour
+// (tint), with a faint wash behind chips. colorStyle feeds the CSS variable.
+export function colorStyle(colorName) {
+  const v = colorHex(colorName);
+  return v ? { '--c': v } : null;
+}
 export function dot(colorName, title) {
   const v = colorHex(colorName);
   if (!v) return null;
@@ -158,12 +171,14 @@ export function colorOptions() {
 // kind narrows the lookup where names repeat across namespaces (the
 // Address any and the Service any).
 export function refChip(name, onRemove, kind) {
-  let cls = 'chip', color = null, title = name;
+  let cls = 'chip', color = null, title = name, found = null;
   {
     const kinds = kind === 'service' ? ['Service', 'ServiceGroup'] : kind === 'address' ? ['Address', 'AddressGroup'] : ['Address', 'AddressGroup', 'Service', 'ServiceGroup', 'Interface', 'Zone'];
     const o = kinds.map((k) => find(k, name)).find(Boolean);
+    found = o;
     if (o) {
-      color = o.metadata.color;
+      // Interfaces and Zones are not coloured: the colour classifies objects only
+      if (o.kind !== 'Interface' && o.kind !== 'Zone') color = o.metadata.color;
       if (o.spec.predefined) cls += ' any';
       if (o.kind === 'Address') title = `${addrForm(o.spec)} ${addrValue(o.spec)}${o.spec.interface ? ' · bound to ' + o.spec.interface : ''}${o.spec.predefined ? ' · predefined' : ''}`;
       else if (o.kind === 'AddressGroup' || o.kind === 'ServiceGroup') { title = `group: ${o.spec.members.join(', ')}`; cls += ' group'; }
@@ -172,7 +187,9 @@ export function refChip(name, onRemove, kind) {
       if (o.metadata.comment) title += `\n${o.metadata.comment}`;
     } else { title = 'missing object'; cls += ' missing'; }
   }
-  return h('span', { class: cls, title }, dot(color), name,
+  const tint = colorStyle(color);
+  const kindIcon = { Address: 'address', AddressGroup: 'addressGroup', Service: 'service', ServiceGroup: 'serviceGroup' }[found?.kind];
+  return h('span', { class: [cls, tint && 'tinted'], style: tint, title: color ? `${title}\ncolor: ${color}` : title }, kindIcon && icon(kindIcon, 'kind'), name,
     onRemove && h('button', { type: 'button', title: 'Remove', 'aria-label': `Remove ${name}`, onclick: onRemove }, '×'));
 }
 

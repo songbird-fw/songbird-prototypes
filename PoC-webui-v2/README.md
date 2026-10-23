@@ -61,9 +61,10 @@ go run . validate -appliance ./data/config                       # also requires
 
 | Try this | What it shows |
 |---|---|
-| Hover the icons of the left rail | Labels appear on hover and on keyboard focus; each page is a "sheet" (M-01 … A-02) |
+| Hover the icons of the left rail | Labels appear on hover and on keyboard focus |
+| Look at any object name | Its Color tints the name itself, as in FortiGate; the meaning is in the tooltip |
 | Policies → right click a Policy row | Every row action is in the context menu: edit, enable/disable, duplicate, move (top, up, down, bottom), new Policy above, YAML, delete. Rows have no buttons. Keyboard: focus a row, `Shift+F10` or the menu key; `Enter` edits, `Alt+↑/↓` moves, `Del` deletes. On a touch screen a tap opens the menu |
-| Policies → *Evaluation order* | `lan2 → wan` is governed by `lan2-to-untrusted`, then `internal-to-untrusted` (DM-42, R-046.3); the RuleSet headers say *before* / *after* |
+| Policies, line under the title | `lan2 → wan` is checked against `lan2-to-untrusted`, then `internal-to-untrusted` (DM-42, R-046.3); the RuleSet headers say *before* / *after* |
 | Live traffic, filter `printers`-range sources | A printer is dropped by `lan2-to-untrusted`; another lan2 host falls through to `internal-to-untrusted` and is accepted |
 | `+ Policy` and leave Source empty | Save is disabled and the field is highlighted (R-009.1) |
 | Pick a source in `internal-to-untrusted` | `any` / `any6` are predefined Addresses, listed first; Addresses bound elsewhere are not offered (DM-12) |
@@ -95,12 +96,21 @@ go run . validate -appliance ./data/config                       # also requires
 
 ## Style
 
-A "drawing sheet": ink on paper, hairline rules, square corners, no shadows or gradients, a faint drafting grid,
-red only for the active state and corrections (like a redline). Display type **Michroma** (wide, the lettering
-of a title block) for titles, labels and table headings; **IBM Plex Sans** for text; **IBM Plex Mono** for
-addresses, ports and revisions. The fonts are served by the binary (an appliance has no CDN), SIL OFL 1.1
-(`web/fonts/`). The left rail shows icons only; labels appear on hover or focus. Light and dark themes share
-the same tokens (`web/style.css`).
+A clean technical drawing on white: graphite text, hairline rules in cool grey, one drafting-blue accent
+reserved for the active state and focus, no gradients or decoration. **Instrument Sans** for all text, in
+sentence case, with hierarchy carried by size and weight (the page title is the one large element);
+**IBM Plex Mono** only for data such as addresses, ports and revisions. The fonts are served by the binary
+(an appliance has no CDN), SIL OFL 1.1 (`web/fonts/`). The left rail shows icons only; labels appear on hover
+or focus. Light and dark themes share the same tokens (`web/style.css`); in the dark theme the page is
+recessed and the rail, bars and panels are raised.
+
+- **Colors.** As in FortiGate, an object's Color tints its name, not a swatch before it. Only Addresses,
+  Services and their groups are coloured; Interfaces, Zones and RuleSets are not.
+- **Kind icons.** A small icon before each reference tells the kind: one circle = Address, three circles =
+  AddressGroup, one square = Service, two squares = ServiceGroup.
+- **Policies.** RuleSets are sections separated by space, not boxes. In Policy rows, objects are plain coloured
+  text, one per line; RuleSet comments are a tooltip on the name; the per-Policy `log` appears under the name only
+  when it is not the default.
 
 ## Layout
 

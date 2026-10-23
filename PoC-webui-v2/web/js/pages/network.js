@@ -4,7 +4,7 @@
 // System.systemServices.dhcp (R-017 … R-017.6) and static routes with the
 // preference rule of DM-23. StaticRoute is a PoC extension kind: the
 // v1alpha1 schema does not cover it yet.
-import { state, h, icon, mount, objs, find, sys, isAdmin, dot, refChip, objectForm, newObject, deleteObject, showYAML, findingBadge, findingsFor, metaFields, usedBy, save, confirmDialog, contextMenu } from '../core.js';
+import { state, h, icon, mount, objs, find, sys, isAdmin, colorStyle, refChip, objectForm, newObject, deleteObject, showYAML, findingBadge, findingsFor, metaFields, usedBy, save, confirmDialog, contextMenu } from '../core.js';
 
 const lines = (v) => (v || []).join('\n');
 const splitLines = (s) => s.split(/[\n,]+/).map((x) => x.trim()).filter(Boolean);
@@ -166,7 +166,7 @@ function ifaceRow(i, child) {
   const z = zoneOf(i.metadata.name);
   const implicit = implicitAccess(i.metadata.name).filter((a) => !(s.allowAccess || []).includes(a));
   return h('tr', { class: [child && 'tree-child', s.enabled === false && 'disabled'], oncontextmenu: rowMenu('Interface', i, ifaceForm), ondblclick: () => ifaceForm(i) },
-    h('td', null, h('div', { class: 'row wrap' }, dot(i.metadata.color), h('button', { class: 'link', onclick: () => ifaceForm(i) }, i.metadata.name),
+    h('td', null, h('div', { class: 'row wrap' }, h('button', { class: 'link', onclick: () => ifaceForm(i) }, i.metadata.name),
       s.type === 'vlan' ? h('span', { class: 'badge outline', title: `802.1Q tag on ${s.parent}` }, `VLAN ${s.vlanId}`) : h('span', { class: 'mono small muted' }, s.device),
       s.enabled === false && h('span', { class: 'badge' }, 'disabled'), findingBadge('Interface', i.metadata.name)),
     i.metadata.comment && h('div', { class: 'small muted' }, i.metadata.comment)),
@@ -207,7 +207,7 @@ function zonesView() {
       h('tbody', null, zones.length ? zones.map((z) => {
         const uses = usedBy('Zone', z.metadata.name);
         return h('tr', { oncontextmenu: rowMenu('Zone', z, zoneForm), ondblclick: () => zoneForm(z) },
-          h('td', null, h('div', { class: 'row' }, dot(z.metadata.color), h('button', { class: 'link', onclick: () => zoneForm(z) }, z.metadata.name), findingBadge('Zone', z.metadata.name)),
+          h('td', null, h('div', { class: 'row' }, h('button', { class: 'link', onclick: () => zoneForm(z) }, z.metadata.name), findingBadge('Zone', z.metadata.name)),
             z.metadata.comment && h('div', { class: 'small muted' }, z.metadata.comment)),
           h('td', null, h('div', { class: 'row wrap' }, z.spec.interfaces.map((i) => refChip(i)))),
           h('td', null, z.spec.interfaces.length > 1 ? h('span', { class: ['badge', z.spec.intraZoneTraffic === 'allow' ? 'warn' : ''] }, z.spec.intraZoneTraffic || 'deny') : h('span', { class: 'muted small' }, 'one member')),
@@ -254,7 +254,7 @@ function routesView() {
     h('section', { class: 'card' }, h('div', { class: 'table-wrap' }, h('table', null,
       h('thead', null, h('tr', null, ['Name', 'Destination', 'Gateway', 'Interface', 'Distance', 'Priority', 'State'].map((t, k) => h('th', { class: [4, 5].includes(k) && 'num' }, t)))),
       h('tbody', null, routes.length ? [...routes].sort((a, b) => a.spec.destination.localeCompare(b.spec.destination) || pref(a)[0] - pref(b)[0] || pref(a)[1] - pref(b)[1]).map((r) => h('tr', { oncontextmenu: rowMenu('StaticRoute', r, routeForm), ondblclick: () => routeForm(r) },
-        h('td', null, h('div', { class: 'row' }, dot(r.metadata.color), h('button', { class: 'link', onclick: () => routeForm(r) }, r.metadata.name), findingBadge('StaticRoute', r.metadata.name)),
+        h('td', null, h('div', { class: 'row' }, h('button', { class: 'link tinted', style: colorStyle(r.metadata.color), onclick: () => routeForm(r) }, r.metadata.name), findingBadge('StaticRoute', r.metadata.name)),
           r.metadata.comment && h('div', { class: 'small muted' }, r.metadata.comment)),
         h('td', { class: 'mono' }, r.spec.destination), h('td', { class: 'mono' }, r.spec.gateway), h('td', null, refChip(r.spec.interface)),
         h('td', { class: 'num' }, r.spec.distance || h('span', { class: 'muted' }, '10')), h('td', { class: 'num' }, r.spec.priority || h('span', { class: 'muted' }, '1')),

@@ -4,7 +4,7 @@
 // Predefined objects ship with Songbird and keep their defining fields
 // (DM-21): the Addresses any / any6 and the Service any, and the 16 Colors
 // (their hex, R-055.1). Their comment stays editable.
-import { state, h, icon, mount, objs, isAdmin, dot, refChip, objectForm, newObject, deleteObject, showYAML, usedBy, findingBadge, metaFields, addrValue, addrForm, svcValue, yamlEditor, contextMenu } from '../core.js';
+import { state, h, icon, mount, objs, isAdmin, colorStyle, refChip, objectForm, newObject, deleteObject, showYAML, usedBy, findingBadge, metaFields, addrValue, addrForm, svcValue, yamlEditor, contextMenu } from '../core.js';
 
 const ifaceOpts = () => [{ value: '', label: '— not bound —' }, ...objs('Interface').map((i) => i.metadata.name)];
 const predefinedOf = (kind, name) => (state.config.predefined?.[kind] || []).includes(name);
@@ -148,7 +148,7 @@ export default {
           const uses = def.kind === 'Color' ? null : usedBy(def.kind, o.metadata.name);
           const pre = isPredefined(def, o);
           return h('tr', { oncontextmenu: rowMenu(def, o), ondblclick: () => edit(def, o) },
-            h('td', null, h('div', { class: 'row wrap' }, def.kind !== 'Color' && dot(o.metadata.color), h('button', { class: 'link', onclick: () => edit(def, o) }, o.metadata.name),
+            h('td', null, h('div', { class: 'row wrap' }, def.kind !== 'Color' && h('button', { class: 'link tinted', style: colorStyle(o.metadata.color), onclick: () => edit(def, o) }, o.metadata.name),
               pre && h('span', { class: 'badge', title: 'Predefined (DM-21)' }, icon('lock'), 'predefined'),
               o.metadata.category && h('span', { class: 'badge outline' }, o.metadata.category), findingBadge(def.kind, o.metadata.name)),
             def.kind !== 'Color' && o.metadata.comment && h('div', { class: 'small muted' }, o.metadata.comment)),
