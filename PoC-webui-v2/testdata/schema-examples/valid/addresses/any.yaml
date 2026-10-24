@@ -1,0 +1,7 @@
+# yaml-language-server: $schema=../../../songbird.schema.json
+# Predefined objects shipped with every configuration (RA R-012.1, R-010.1).
+# They cannot be modified or deleted; the validator checks them byte for byte.
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Address"
+metadata: { name: "any", comment: "Any IPv4 address" }
+spec: { subnet: "0.0.0.0/0", predefined: true }

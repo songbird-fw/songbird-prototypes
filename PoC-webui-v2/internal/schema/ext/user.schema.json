@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://config.songbird-fw.com/v1alpha1/user.schema.json",
   "title": "User",
-  "description": "PoC PROPOSAL, not part of songbird-yaml-schema v1alpha1 ('User', 'Role' not covered yet). A local administrative account (R-043.x). The password is stored as a bcrypt hash with cost >= 12 (R-043.1); built-in Roles only (R-043.9, custom Roles not modelled).",
+  "description": "PoC PROPOSAL, not part of the v1alpha1 schema (songbird-fw/schema) ('User', 'Role' not covered yet). A local administrative account (R-043.x). The password is stored as a bcrypt hash with cost >= 12 (R-043.1); built-in Roles only (R-043.9, custom Roles not modelled).",
   "x-songbird-status": "proposal",
   "type": "object",
   "additionalProperties": false,

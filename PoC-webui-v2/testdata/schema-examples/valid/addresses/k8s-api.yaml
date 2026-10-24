@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=../../../songbird.schema.json
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Address"
+metadata:
+  name: "k8s-api"
+  color: "k8s-blue"
+spec:
+  interface: "lan1"
+  subnet: "192.168.0.25/32"

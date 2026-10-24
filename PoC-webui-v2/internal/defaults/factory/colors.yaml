@@ -1,9 +1,9 @@
-# The predefined palette is added from internal/predefined; here only the
-# user-defined Colors (R-055.2).
+# The 16 predefined Colors are added from internal/predefined; here only the
+# user-defined ones (R-055.2). A user Color needs its own hex (DM-33).
 apiVersion: "config.songbird-fw.com/v1alpha1"
 kind: "Color"
 metadata:
   name: "management"
   comment: "Management hosts and admin access"
 spec:
-  hex: "#AD1457"
+  hex: "#455A64"

@@ -119,12 +119,20 @@ func TestSaveIsValidatedInTwoLayers(t *testing.T) {
 		t.Errorf("expected a schema error on line 6, got %+v", r)
 	}
 
-	// layer 2: DM-38, a Zone member referenced directly
+	// layer 2: DM-06, a RuleSet from a Zone to the same Zone
+	r = c.do("PUT", "/api/v1/objects/RuleSet/internal-to-dmz", "application/json",
+		`{"metadata":{"name":"internal-to-dmz"},"spec":{"from":"internal","to":"internal","rules":[]}}`, rev)
+	if e := has(r.Validation, "same-zone"); r.Status != 422 || e == nil || e.Constraint != "DM-06" || len(r.Validation) != 1 {
+		t.Errorf("expected only DM-06, got %+v", r)
+	}
+
+	// DM-38 (domain model 0.7): a Zone member may be referenced directly
 	r = c.do("PUT", "/api/v1/objects/RuleSet/guest-to-untrusted", "application/json",
 		`{"metadata":{"name":"guest-to-untrusted"},"spec":{"from":"guest","to":"wan","rules":[]}}`, rev)
-	if e := has(r.Validation, "zone-member"); r.Status != 422 || e == nil || e.Constraint != "DM-38" || len(r.Validation) != 1 {
-		t.Errorf("expected only DM-38, got %+v", r)
+	if r.Status != 200 {
+		t.Errorf("a member Interface next to its Zone must be accepted, got %+v", r)
 	}
+	rev = c.rev()
 
 	// an empty RuleSet is valid and stays "rules: []"
 	r = c.do("PUT", "/api/v1/objects/RuleSet/guest-to-dmz?create=1", "application/json",
@@ -151,8 +159,15 @@ func TestPredefinedObjectsAreProtected(t *testing.T) {
 	if r := c.do("DELETE", "/api/v1/objects/Color/green", "", "", rev); r.Status != 422 {
 		t.Errorf("predefined Color deleted: %+v", r)
 	}
-	if r := c.do("DELETE", "/api/v1/objects/Service/https", "", "", rev); r.Status != 422 {
+	if r := c.do("DELETE", "/api/v1/objects/Service/any", "", "", rev); r.Status != 422 {
 		t.Errorf("predefined Service deleted: %+v", r)
+	}
+	if r := c.do("DELETE", "/api/v1/objects/Address/any6", "", "", rev); r.Status != 422 {
+		t.Errorf("predefined Address deleted: %+v", r)
+	}
+	r0 := c.do("PUT", "/api/v1/objects/Address/any", "application/json", `{"metadata":{"name":"any"},"spec":{"subnet":"10.0.0.0/8","predefined":true}}`, rev)
+	if r0.Status != 422 || has(r0.Validation, "predefined-immutable") == nil {
+		t.Errorf("predefined Address changed: %+v", r0)
 	}
 	r := c.do("PUT", "/api/v1/objects/Color/green", "application/json", `{"metadata":{"name":"green"},"spec":{"hex":"#00FF00","predefined":true}}`, rev)
 	if r.Status != 422 || has(r.Validation, "predefined-hex") == nil {
@@ -165,7 +180,13 @@ func TestPredefinedObjectsAreProtected(t *testing.T) {
 }
 
 func readCorpus(t *testing.T) string {
-	files, _ := filepath.Glob("../../testdata/schema-examples/valid/*/*.yaml")
+	var files []string
+	_ = filepath.WalkDir("../../testdata/schema-examples/valid", func(p string, d os.DirEntry, err error) error {
+		if err == nil && !d.IsDir() && strings.HasSuffix(p, ".yaml") {
+			files = append(files, p)
+		}
+		return nil
+	})
 	var parts []string
 	for _, f := range files {
 		b, err := os.ReadFile(f)
@@ -177,23 +198,21 @@ func readCorpus(t *testing.T) string {
 	return strings.Join(parts, "\n---\n")
 }
 
-// The example of songbird-yaml-schema is refused as is (DM-38), accepted
-// once untrusted-to-lan1 targets the Zone, and the export reads back clean.
+// The example of the schema is accepted as is (multi-document files
+// included), one object per file in the repository, and the export reads
+// back clean.
 func TestImportSchemaExampleAndExport(t *testing.T) {
 	c := setup(t)
-	corpus := readCorpus(t)
-	r := c.do("POST", "/api/v1/import", "application/yaml", corpus, c.rev())
-	if e := has(r.Validation, "zone-member"); r.Status != 422 || e == nil || e.File != "import.yaml" || e.Line == 0 {
-		t.Fatalf("expected the DM-38 error in import.yaml, got %+v", r)
+	r := c.do("POST", "/api/v1/import", "application/yaml", readCorpus(t), c.rev())
+	if r.Status != 200 || !r.Applied {
+		t.Fatalf("schema example: %+v", r)
 	}
-	fixed := strings.Replace(corpus, "  to: \"lan1\"", "  to: \"internal\"", 1)
-	r = c.do("POST", "/api/v1/import", "application/yaml", fixed, c.rev())
-	if r.Status != 200 || !r.Applied || len(r.Warnings) != 5 {
-		t.Fatalf("fixed example: %+v", r)
+	for _, w := range r.Warnings {
+		t.Log(w)
 	}
 	cfg := c.do("GET", "/api/v1/config", "", "", "")
-	if n := len(cfg.Objects["Address"]); n != 10 || len(cfg.Objects["User"]) != 2 {
-		t.Errorf("expected the 10 Addresses of the example and the 2 Users kept, got %d / %d", n, len(cfg.Objects["User"]))
+	if n := len(cfg.Objects["Address"]); n != 14 || len(cfg.Objects["User"]) != 2 {
+		t.Errorf("expected the 14 Addresses of the example and the 2 Users kept, got %d / %d", n, len(cfg.Objects["User"]))
 	}
 
 	res, b := c.raw("GET", "/api/v1/export", "", "", "")
@@ -226,12 +245,12 @@ func TestImportSchemaExampleAndExport(t *testing.T) {
 	}
 	tree, _, errs := validator.LoadDir(dir)
 	errs = append(errs, validator.Errors(validator.Validate(tree))...)
-	if files != 45 || len(validator.Errors(errs)) > 0 {
+	if files != 59 || len(validator.Errors(errs)) > 0 {
 		t.Errorf("export: %d files, errors %v", files, errs)
 	}
 	n := 0
 	tree.Each(func(m.Doc) { n++ })
-	if n != 45 {
-		t.Errorf("export reads back %d objects, want 45", n)
+	if n != 59 {
+		t.Errorf("export reads back %d objects, want 59", n)
 	}
 }

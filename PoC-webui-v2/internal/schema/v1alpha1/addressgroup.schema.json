@@ -2,24 +2,39 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://config.songbird-fw.com/v1alpha1/addressgroup.schema.json",
   "title": "AddressGroup",
-  "description": "A named list of Address and/or AddressGroup objects (R-013). Members are references into the shared Address/AddressGroup namespace. Cycles are rejected by the validator (not expressible in JSON Schema).",
+  "description": "A named, flat list of Address objects (RA R-013). A AddressGroup cannot contain another AddressGroup (team decision 2026-10-19: groups are flat); the validator rejects a member that is not a Address. Members may mix address families / protocols.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["apiVersion", "kind", "metadata", "spec"],
+  "required": [
+    "apiVersion",
+    "kind",
+    "metadata",
+    "spec"
+  ],
   "properties": {
-    "apiVersion": { "$ref": "common.schema.json#/$defs/apiVersion" },
-    "kind": { "const": "AddressGroup" },
-    "metadata": { "$ref": "common.schema.json#/$defs/metadata" },
+    "apiVersion": {
+      "$ref": "common.schema.json#/$defs/apiVersion"
+    },
+    "kind": {
+      "const": "AddressGroup"
+    },
+    "metadata": {
+      "$ref": "common.schema.json#/$defs/metadata"
+    },
     "spec": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["members"],
+      "required": [
+        "members"
+      ],
       "properties": {
         "members": {
           "type": "array",
           "minItems": 1,
           "uniqueItems": true,
-          "items": { "$ref": "common.schema.json#/$defs/reference" }
+          "items": {
+            "$ref": "common.schema.json#/$defs/reference"
+          }
         }
       }
     }

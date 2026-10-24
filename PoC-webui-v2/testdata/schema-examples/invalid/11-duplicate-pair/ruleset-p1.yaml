@@ -1,0 +1,4 @@
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "RuleSet"
+metadata: { name: "p1" }
+spec: { from: "lan", to: "wan", rules: [] }

@@ -27,7 +27,7 @@ func TestSimulatedFlowsAreConsistent(t *testing.T) {
 		}
 		i, _ := tree.Interface(e.InIf)
 		src := netip.MustParseAddr(e.Src)
-		if i.Spec.EffectiveRole() != "external" {
+		if !tree.Uplink(i.Metadata.Name) {
 			in := false
 			for _, a := range i.Spec.StaticAddresses() {
 				if p := netip.MustParsePrefix(a); p.Masked().Contains(src) {

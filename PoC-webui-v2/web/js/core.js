@@ -1,7 +1,7 @@
 // Core helpers: DOM builder, API client, shared state, modals, toasts, forms.
 // The UI holds no configuration of its own: it reads the tree from the API
 // and every save goes back as a whole object with If-Match (components.md).
-// Objects are songbird-yaml-schema v1alpha1 documents, unchanged.
+// Objects are v1alpha1 documents (songbird-fw/schema), unchanged.
 
 export const API_VERSION = 'config.songbird-fw.com/v1alpha1';
 
@@ -27,7 +27,7 @@ export function h(tag, attrs, ...children) {
   for (const [k, v] of Object.entries(attrs || {})) {
     if (v == null || v === false || k === 'svg') continue;
     if (k.startsWith('on') && typeof v === 'function') el.addEventListener(k.slice(2), v);
-    else if (k === 'style' && typeof v === 'object') Object.assign(el.style, v);
+    else if (k === 'style' && typeof v === 'object') for (const [sk, sv] of Object.entries(v)) { if (sk.startsWith('--')) el.style.setProperty(sk, sv); else el.style[sk] = sv; }
     else if (k === 'class') el.setAttribute('class', Array.isArray(v) ? v.filter(Boolean).join(' ') : v);
     else if (k === 'value' && 'value' in el && tag !== 'option') el.value = v;
     else if (k === 'checked' || k === 'selected' || k === 'disabled') el[k] = !!v;
@@ -80,6 +80,17 @@ const ICONS = {
   cog: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z',
   download: 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M7 10l5 5 5-5 M12 15V3',
   upload: 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M17 8l-5-5-5 5 M12 3v12',
+  copy: 'M9 9h11v11H9z M5 15H4V4h11v1',
+  more: 'M5 12h.01 M12 12h.01 M19 12h.01',
+  // object kinds, shown before names: one circle = one Address, three = a group;
+  // one square = one Service, two = a group
+  address: 'M5.5 12a6.5 6.5 0 1 0 13 0a6.5 6.5 0 1 0 -13 0',
+  addressGroup: 'M2.5 7.5a3.5 3.5 0 1 0 7 0a3.5 3.5 0 1 0 -7 0 M14.5 7.5a3.5 3.5 0 1 0 7 0a3.5 3.5 0 1 0 -7 0 M8.5 16.5a3.5 3.5 0 1 0 7 0a3.5 3.5 0 1 0 -7 0',
+  service: 'M5.5 5.5h13v13h-13z',
+  serviceGroup: 'M3 3h11v11H3z M10 10h11v11H10z',
+  top: 'M5 4h14 M12 20V8 M6 14l6-6 6 6',
+  bottom: 'M5 20h14 M12 4v12 M6 10l6 6 6-6',
+  insert: 'M12 5v14 M5 12h14 M3 3h4 M17 3h4',
 };
 
 export function icon(name, cls) {
@@ -139,6 +150,12 @@ export const svcValue = (spec) => (spec?.protocols || []).map(protoEntry).join('
 // Color's comment.
 
 export function colorHex(name) { return name ? find('Color', name)?.spec.hex || null : null; }
+// Objects are coloured like in FortiGate: the name itself takes the colour
+// (tint), with a faint wash behind chips. colorStyle feeds the CSS variable.
+export function colorStyle(colorName) {
+  const v = colorHex(colorName);
+  return v ? { '--c': v } : null;
+}
 export function dot(colorName, title) {
   const v = colorHex(colorName);
   if (!v) return null;
@@ -149,29 +166,40 @@ export function colorOptions() {
   return [{ value: '', label: '— none —' }, ...objs('Color').map((c) => ({ value: c.metadata.name, label: `${c.metadata.name}${c.metadata.comment ? ' — ' + c.metadata.comment : ''}` }))];
 }
 
-// Display a reference (Address, group, Service, "any") as a chip.
-export function refChip(name, onRemove) {
-  let cls = 'chip', color = null, title = name;
-  if (name === 'any') { cls += ' any'; title = 'any (the schema keyword ["any"])'; }
-  else {
-    const o = find('Address', name) || find('AddressGroup', name) || find('Service', name) || find('ServiceGroup', name) || find('Interface', name) || find('Zone', name);
+// Display a reference (Address, group, Service, Interface, Zone) as a chip.
+// "any" / "any6" are predefined objects, not a keyword (DM-21): shown plain.
+// kind narrows the lookup where names repeat across namespaces (the
+// Address any and the Service any).
+export function refChip(name, onRemove, kind) {
+  let cls = 'chip', color = null, title = name, found = null;
+  {
+    const kinds = kind === 'service' ? ['Service', 'ServiceGroup'] : kind === 'address' ? ['Address', 'AddressGroup'] : ['Address', 'AddressGroup', 'Service', 'ServiceGroup', 'Interface', 'Zone'];
+    const o = kinds.map((k) => find(k, name)).find(Boolean);
+    found = o;
     if (o) {
-      color = o.metadata.color;
-      if (o.kind === 'Address') title = `${addrForm(o.spec)} ${addrValue(o.spec)}${o.spec.interface ? ' · bound to ' + o.spec.interface : ''}`;
+      // Interfaces and Zones are not coloured: the colour classifies objects only
+      if (o.kind !== 'Interface' && o.kind !== 'Zone') color = o.metadata.color;
+      if (o.spec.predefined) cls += ' any';
+      if (o.kind === 'Address') title = `${addrForm(o.spec)} ${addrValue(o.spec)}${o.spec.interface ? ' · bound to ' + o.spec.interface : ''}${o.spec.predefined ? ' · predefined' : ''}`;
       else if (o.kind === 'AddressGroup' || o.kind === 'ServiceGroup') { title = `group: ${o.spec.members.join(', ')}`; cls += ' group'; }
       else if (o.kind === 'Service') title = svcValue(o.spec);
       else if (o.kind === 'Zone') { title = `Zone: ${o.spec.interfaces.join(', ')}`; cls += ' group'; }
       if (o.metadata.comment) title += `\n${o.metadata.comment}`;
     } else { title = 'missing object'; cls += ' missing'; }
   }
-  return h('span', { class: cls, title }, dot(color), name,
+  const tint = colorStyle(color);
+  const kindIcon = { Address: 'address', AddressGroup: 'addressGroup', Service: 'service', ServiceGroup: 'serviceGroup' }[found?.kind];
+  return h('span', { class: [cls, tint && 'tinted'], style: tint, title: color ? `${title}\ncolor: ${color}` : title }, kindIcon && icon(kindIcon, 'kind'), name,
     onRemove && h('button', { type: 'button', title: 'Remove', 'aria-label': `Remove ${name}`, onclick: onRemove }, '×'));
 }
 
 // ---- findings of the Validator ---------------------------------------------------
 
 export const findings = () => state.config?.findings || [];
-export const filePath = (kind, name) => `${(state.config?.kinds || []).find((k) => k.name === kind)?.dir || kind}/${name}.yaml`;
+export function filePath(kind, name) {
+  const k = (state.config?.kinds || []).find((x) => x.name === kind);
+  return k && k.dir === '' ? `${name}.yaml` : `${k?.dir || kind}/${name}.yaml`;
+}
 export function findingsFor(kind, name) { const f = filePath(kind, name); return findings().filter((e) => e.file === f); }
 
 export function findingBadge(kind, name) {
@@ -292,6 +320,45 @@ export function validationBox(errs, msg, warnings) {
   return out.length ? out : null;
 }
 
+// ---- context menu ---------------------------------------------------------------------
+// items: [{ label, icon, kbd, danger, disabled, onClick } | '-' ]. Opens at the
+// pointer (or under an element for keyboard use); Escape, a click outside,
+// scrolling or a resize close it. Arrow keys move between items.
+
+let ctxClose = null;
+export function contextMenu(at, title, items, onClose) {
+  if (ctxClose) ctxClose();
+  const menu = h('div', { class: 'ctx', role: 'menu', 'aria-label': title },
+    title && h('div', { class: 'ctx-title' }, title),
+    items.filter(Boolean).map((it) => (it === '-' ? h('hr') : h('button', { role: 'menuitem', class: it.danger && 'danger', disabled: it.disabled, title: it.title,
+      onclick: () => { close(); it.onClick(); } }, it.icon && icon(it.icon), it.label, it.kbd && h('span', { class: 'kbd' }, it.kbd)))));
+  const close = () => {
+    menu.remove(); ctxClose = null;
+    document.removeEventListener('mousedown', outside, true); document.removeEventListener('keydown', key, true);
+    window.removeEventListener('scroll', close, true); window.removeEventListener('resize', close);
+    onClose && onClose();
+  };
+  const outside = (e) => { if (!menu.contains(e.target)) close(); };
+  const key = (e) => {
+    const btns = [...menu.querySelectorAll('button:not(:disabled)')];
+    const i = btns.indexOf(document.activeElement);
+    if (e.key === 'Escape') { e.preventDefault(); close(); } else if (e.key === 'ArrowDown') { e.preventDefault(); btns[(i + 1) % btns.length]?.focus(); } else if (e.key === 'ArrowUp') { e.preventDefault(); btns[(i - 1 + btns.length) % btns.length]?.focus(); }
+  };
+  document.body.append(menu);
+  let x = at.x, y = at.y;
+  const r = menu.getBoundingClientRect();
+  if (x + r.width > innerWidth - 8) x = Math.max(8, innerWidth - r.width - 8);
+  if (y + r.height > innerHeight - 8) y = Math.max(8, y - r.height);
+  menu.style.left = `${x}px`; menu.style.top = `${y}px`;
+  setTimeout(() => {
+    document.addEventListener('mousedown', outside, true); document.addEventListener('keydown', key, true);
+    window.addEventListener('scroll', close, true); window.addEventListener('resize', close);
+    menu.querySelector('button:not(:disabled)')?.focus({ preventScroll: true });
+  }, 0);
+  ctxClose = close;
+  return close;
+}
+
 // ---- YAML editor -------------------------------------------------------------------------------
 // Edits the file itself. The server checks it against the schema and the
 // Validator on every keystroke (dry run), and reports file:line and path.
@@ -363,19 +430,17 @@ function opts(f, o) {
 }
 
 // multiPicker: chips + "add" select, used for sources/destinations/services/members.
-// With anyOption, "any" is exclusive: it replaces the list ( ["any"] ).
-export function multiPicker(values, options, onChange, placeholder = 'add…', anyOption = false) {
+// kind ('address' | 'service') resolves the chips in the right namespace.
+export function multiPicker(values, options, onChange, placeholder = 'add…', kind) {
   const box = h('div', { class: 'chips' });
   const render = () => {
     box.replaceChildren();
-    values.forEach((v, i) => box.append(refChip(v, () => { values.splice(i, 1); onChange(values); render(); })));
-    if (values[0] === 'any') return;
+    values.forEach((v, i) => box.append(refChip(v, () => { values.splice(i, 1); onChange(values); render(); }, kind)));
     const sel = h('select', { 'aria-label': placeholder, onchange: () => {
       if (!sel.value) return;
-      if (sel.value === 'any') values.splice(0, values.length, 'any'); else values.push(sel.value);
+      values.push(sel.value);
       onChange(values); render();
     } }, h('option', { value: '' }, values.length ? '+ add' : placeholder));
-    if (anyOption && !values.length) sel.append(h('option', { value: 'any' }, 'any'));
     const groups = {};
     for (const o of options) if (!values.includes(o.value)) (groups[o.group || ''] ||= []).push(o);
     for (const [g, list] of Object.entries(groups)) {
@@ -449,7 +514,7 @@ export function objectForm({ kind, obj, isNew, fields, title, onSaved, extra, to
           break;
         case 'multi': {
           const vals = [...(cur || [])];
-          input = disabled ? h('div', { class: 'chips' }, vals.map((v) => refChip(v))) : multiPicker(vals, opts(f, draft), (v) => set([...v]), f.placeholder, f.any);
+          input = disabled ? h('div', { class: 'chips' }, vals.map((v) => refChip(v, null, f.ns))) : multiPicker(vals, opts(f, draft), (v) => set([...v]), f.placeholder, f.ns);
           break;
         }
         case 'checks': {
@@ -539,12 +604,14 @@ export function usedBy(kind, name) {
   if (addr) for (const g of objs('AddressGroup')) if (g.spec.members.includes(name)) out.push(g.metadata.name);
   if (svc) for (const g of objs('ServiceGroup')) if (g.spec.members.includes(name)) out.push(g.metadata.name);
   if (addr && (sys().admin?.trustedHosts || []).includes(name)) out.push('System (trustedHosts)');
+  const ss = sys().systemServices || {};
+  if (net) for (const svc of ['dns', 'ntp']) if ((ss[svc]?.listenOn || []).includes(name)) out.push(`System (${svc}.listenOn)`);
   if (kind === 'Interface') {
     for (const z of objs('Zone')) if (z.spec.interfaces.includes(name)) out.push(`Zone ${z.metadata.name}`);
     for (const i of objs('Interface')) if (i.spec.parent === name) out.push(`VLAN ${i.metadata.name}`);
     for (const a of objs('Address')) if (a.spec.interface === name) out.push(a.metadata.name);
     for (const r of objs('StaticRoute')) if (r.spec.interface === name) out.push(`route ${r.metadata.name}`);
-    for (const d of objs('DhcpServer')) if (d.spec.interface === name) out.push(`DHCP ${d.metadata.name}`);
+    if (ss.dhcp?.[name]) out.push('System (DHCP pool)');
   }
   if (kind === 'Color') for (const k of Object.keys(state.config?.objects || {})) for (const o of objs(k)) if (o.metadata.color === name) out.push(`${k} ${o.metadata.name}`);
   return out;
@@ -556,7 +623,7 @@ export function newObject(kind, spec, meta = {}) {
 
 // Common metadata fields of every kind (common.schema.json#/$defs/metadata).
 export const metaFields = ({ color = true, placeholder } = {}) => [
-  { key: 'metadata.name', label: 'Name', required: true, immutable: true, placeholder, help: 'Lowercase letters, digits, ".", "_", "-"; "any", "all", "none" are reserved' },
+  { key: 'metadata.name', label: 'Name', required: true, immutable: true, placeholder, help: 'Lowercase letters, digits, ".", "_", "-"; "none" is reserved' },
   color && { key: 'metadata.color', label: 'Color', type: 'select', options: colorOptions, help: 'A classification from the palette (R-055)' },
   { key: 'metadata.comment', label: 'Comment', full: true, placeholder: 'What this is for' },
 ].filter(Boolean);

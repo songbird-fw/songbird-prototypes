@@ -1,0 +1,8 @@
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "RuleSet"
+metadata: { name: "p" }
+spec:
+  from: "wan"
+  to: "lan"
+  rules:
+    - { name: "x", source: ["any"], destination: ["pub"], service: ["https"], action: "accept", nat: { type: "dnat", translateIpTo: "srv", translateServiceTo: "udp9" } }

@@ -109,7 +109,7 @@ func (s *Simulator) one(t *m.Tree, now time.Time) {
 		f.InIf = arrival(t, ins, f.Src, in)
 		f.Proto, f.Dport = s.service(t, p.Service)
 	} else {
-		f = Flow{InIf: in, Src: s.addr(t, []string{m.Any}, in), Dst: s.addr(t, []string{m.Any}, out), Proto: "tcp", Dport: pick(23, 445, 3389, 5900, 1433)}
+		f = Flow{InIf: in, Src: s.addr(t, nil, in), Dst: s.addr(t, nil, out), Proto: "tcp", Dport: pick(23, 445, 3389, 5900, 1433)}
 	}
 	s.emitFlow(t, f, now)
 }
@@ -126,10 +126,10 @@ func (s *Simulator) unpaired(t *m.Tree, now time.Time) {
 	}
 	for range 10 {
 		in, out := withAddr[rand.IntN(len(withAddr))], withAddr[rand.IntN(len(withAddr))]
-		if _, ok := governing(t, in, out); ok || in == out {
+		if governed(t, in, out) || in == out {
 			continue
 		}
-		f := Flow{InIf: in, Src: s.addr(t, []string{m.Any}, in), Dst: s.addr(t, []string{m.Any}, out), Proto: "tcp", Dport: pick(22, 80, 443, 445, 3389)}
+		f := Flow{InIf: in, Src: s.addr(t, nil, in), Dst: s.addr(t, nil, out), Proto: "tcp", Dport: pick(22, 80, 443, 445, 3389)}
 		s.emitFlow(t, f, now)
 		return
 	}
@@ -173,12 +173,12 @@ func (s *Simulator) localIn(t *m.Tree, now time.Time) {
 	i := cands[rand.IntN(len(cands))]
 	n := i.Metadata.Name
 	svc := pickS("https", "ping", "dns", "dhcp", "ntp", "ssh")
-	if i.Spec.EffectiveRole() == "external" && rand.IntN(2) == 0 {
+	if t.Uplink(n) && rand.IntN(2) == 0 {
 		svc = "ssh"
 	}
 	proto, port := map[string]string{"https": "tcp", "ping": "icmp", "dns": "udp", "dhcp": "udp", "ntp": "udp", "ssh": "tcp"}[svc],
 		map[string]int{"https": t.Sys().HTTPSPort(), "dns": 53, "dhcp": 67, "ntp": 123, "ssh": 22}[svc]
-	src := s.addr(t, []string{m.Any}, n)
+	src := s.addr(t, nil, n)
 	e := Event{TS: now, Type: "FLOW_NEW", Verdict: "accept", Reason: "local-in", Src: src.String(), Dst: ifaceIP(t, n),
 		Sport: eph(), Dport: port, Proto: proto, InIf: n}
 	if proto == "icmp" {
@@ -193,7 +193,7 @@ func (s *Simulator) localIn(t *m.Tree, now time.Time) {
 func localAllowed(t *m.Tree, i m.Interface, svc string, src netip.Addr) bool {
 	sys := t.Sys()
 	n := i.Metadata.Name
-	if slices.Contains(i.Spec.AllowAccess, svc) {
+	if slices.Contains(i.Spec.AllowAccess, svc) { // management services (DM-05)
 		if svc == "https" && sys.Admin != nil && len(sys.Admin.TrustedHosts) > 0 {
 			return inAddresses(t, sys.Admin.TrustedHosts, src)
 		}
@@ -207,24 +207,21 @@ func localAllowed(t *m.Tree, i m.Interface, svc string, src netip.Addr) bool {
 		}
 		return false
 	}
-	switch svc { // DM-34: a service the firewall runs opens its own ports
+	switch svc { // DM-34: a System Service opens its own ports where it listens
 	case "dhcp":
-		for _, d := range t.DhcpServers {
-			if d.Spec.Enabled && d.Spec.Interface == n {
-				return true
-			}
-		}
+		p, ok := sys.DHCP()[n]
+		return ok && p.IsEnabled()
 	case "dns":
-		return sys.DNS != nil && served(sys.DNS.ServeToInterfaces)
+		return sys.DNS() != nil && served(sys.DNS().ListenOn)
 	case "ntp":
-		return sys.NTP != nil && sys.NTP.Enabled && served(sys.NTP.ServeToInterfaces)
+		return sys.NTP() != nil && sys.NTP().Enabled && served(sys.NTP().ListenOn)
 	}
 	return false
 }
 
 // addr picks an address of a source/destination list, on the given side.
 func (s *Simulator) addr(t *m.Tree, refs []string, iface string) netip.Addr {
-	if !m.IsAny(refs) && len(refs) > 0 {
+	if !t.AnyAddress(refs) && len(refs) > 0 {
 		var all []m.Address
 		for _, r := range refs {
 			all = append(all, t.ExpandAddresses(r)...)
@@ -237,7 +234,7 @@ func (s *Simulator) addr(t *m.Tree, refs []string, iface string) netip.Addr {
 		}
 	}
 	if i, ok := t.Interface(iface); ok {
-		if i.Spec.EffectiveRole() == "external" {
+		if t.Uplink(iface) {
 			return netip.MustParseAddr(publicIP())
 		}
 		if as := i.Spec.StaticAddresses(); len(as) > 0 {
@@ -250,7 +247,7 @@ func (s *Simulator) addr(t *m.Tree, refs []string, iface string) netip.Addr {
 }
 
 func (s *Simulator) service(t *m.Tree, refs []string) (string, int) {
-	if !m.IsAny(refs) && len(refs) > 0 {
+	if !t.AnyService(refs) && len(refs) > 0 {
 		var entries []m.ProtocolEntry
 		for _, r := range refs {
 			for _, sv := range t.ExpandServices(r) {
@@ -288,16 +285,17 @@ func arrival(t *m.Tree, ins []string, src netip.Addr, fallback string) string {
 		}
 	}
 	for _, n := range ins {
-		if i, ok := t.Interface(n); ok && i.Spec.EffectiveRole() == "external" {
+		if t.Uplink(n) {
 			return n
 		}
 	}
 	return fallback
 }
 
+// external is the uplink with a static address, where Internet scans land.
 func external(t *m.Tree) string {
 	for _, i := range t.Interfaces {
-		if i.Spec.EffectiveRole() == "external" && len(i.Spec.StaticAddresses()) > 0 {
+		if t.Uplink(i.Metadata.Name) && len(i.Spec.StaticAddresses()) > 0 {
 			return i.Metadata.Name
 		}
 	}

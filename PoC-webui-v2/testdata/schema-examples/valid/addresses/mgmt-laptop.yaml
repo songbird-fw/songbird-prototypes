@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=../../../songbird.schema.json
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Address"
+metadata:
+  name: "mgmt-laptop"
+  comment: "Agos' workstation (DHCP reservation)"
+spec:
+  interface: "lan1"
+  subnet: "192.168.0.50/32"

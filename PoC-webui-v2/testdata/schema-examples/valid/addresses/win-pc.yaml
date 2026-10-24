@@ -1,0 +1,8 @@
+# yaml-language-server: $schema=../../../songbird.schema.json
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Address"
+metadata:
+  name: "win-pc"
+  comment: "Match by MAC, source only"
+spec:
+  mac: "34:29:8f:74:f4:6a"

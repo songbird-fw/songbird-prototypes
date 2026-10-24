@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=../../../songbird.schema.json
+# Several objects in one file are accepted on input (R-020.7); `songbird export` would split them again.
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Address"
+metadata: { name: "guest-wifi", comment: "Guest Wi-Fi subnet (multi-document file example)" }
+spec: { interface: "lan2", subnet: "192.168.2.128/25" }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Address"
+metadata: { name: "guest-portal", comment: "Captive portal host (multi-document file example)" }
+spec: { interface: "lan2", subnet: "192.168.2.130/32" }

@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=../../../songbird.schema.json
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Service"
+metadata:
+  name: "veeam"
+  comment: "Veeam Backup & Replication data mover"
+  color: "green"
+spec:
+  protocols:
+    - { protocol: "tcp", port: "2500-3300" }
+    - { protocol: "tcp", port: 9392 }

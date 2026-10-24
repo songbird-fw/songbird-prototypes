@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=../../../songbird.schema.json
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "RuleSet"
+metadata:
+  name: "dmz-to-internal"
+  comment: "Backup traffic from the DMZ to the Veeam server only"
+spec:
+  from: "dmz-zone"
+  to: "internal"
+  rules:
+    - name: "dmz-backup"
+      source: ["nginx"]
+      destination: ["grp-backup"]
+      service: ["veeam"]
+      action: "accept"

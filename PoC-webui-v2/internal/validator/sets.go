@@ -97,14 +97,14 @@ func (s ivs) size() uint64 {
 	return n
 }
 
-// addrSet is the IPv4 set of an address list; any = ["any"].
+// addrSet is the IPv4 set of an address list; any = it holds a predefined Address.
 type addrSet struct {
 	any bool
 	ivs ivs
 }
 
 func (x *v) addrSet(refs []string) addrSet {
-	if m.IsAny(refs) {
+	if x.t.AnyAddress(refs) {
 		return addrSet{any: true}
 	}
 	var s addrSet
@@ -146,7 +146,7 @@ type svcSet struct {
 }
 
 func (x *v) svcSet(refs []string) svcSet {
-	if m.IsAny(refs) {
+	if x.t.AnyService(refs) {
 		return svcSet{any: true}
 	}
 	s := svcSet{ports: map[string]ivs{}}

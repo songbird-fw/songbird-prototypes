@@ -1,6 +1,0 @@
-apiVersion: "config.songbird-fw.com/v1alpha1"
-kind: "System"
-metadata: { name: "system" }
-spec:
-  hostname: "fw01"
-  dns: { mode: "forwarder", upstreams: ["9.9.9.9"], dns64: true }

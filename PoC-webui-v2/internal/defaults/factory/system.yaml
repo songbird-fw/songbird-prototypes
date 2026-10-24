@@ -1,4 +1,4 @@
-# Factory-default configuration of the PoC (songbird-yaml-schema v1alpha1).
+# Factory-default configuration of the PoC (schema v1alpha1, songbird-fw/schema).
 # A small office: WAN, an 802.1Q trunk with office, server, guest and DMZ VLANs.
 apiVersion: "config.songbird-fw.com/v1alpha1"
 kind: "System"
@@ -16,19 +16,36 @@ spec:
     trustedHosts: ["lan1-subnet"]
     certificate: { mode: "self-signed" }
     ui: { theme: "auto", language: "en" }
-  ntp:
-    enabled: true
-    servers: ["0.it.pool.ntp.org", "1.it.pool.ntp.org"]
-    serveToInterfaces: ["internal"]
-  dns:
-    mode: "forwarder"
-    upstreams: ["9.9.9.9", "149.112.112.112"]
-    failoverAfterTimeouts: 3
-    localDomain: "songbird.lan"
-    localRecords:
-      - { name: "nas", address: "192.168.20.30" }
-      - { name: "printer-hall", address: "192.168.20.100" }
-    serveToInterfaces: ["internal", "guest"]
+  systemServices:
+    ntp:
+      enabled: true
+      servers: ["0.it.pool.ntp.org", "1.it.pool.ntp.org"]
+      listenOn: ["internal"]
+    dns:
+      mode: "forwarder"
+      upstreams: ["9.9.9.9", "149.112.112.112"]
+      failoverAfterTimeouts: 3
+      localDomain: "songbird.lan"
+      localRecords:
+        - { name: "nas", address: "192.168.20.30" }
+        - { name: "printer-hall", address: "192.168.20.100" }
+      listenOn: ["internal", "guest"]
+    # One DHCP pool per Interface (schema decision 16). Omitting dnsServers
+    # advertises the firewall itself, so the Interface must be in dns.listenOn (R-017.6).
+    dhcp:
+      lan1:
+        range: { start: "192.168.10.100", end: "192.168.10.199" }
+        leaseTime: "24h"
+        domain: "songbird.lan"
+        ntpServers: ["192.168.10.1"]
+        reservations:
+          - { mac: "52:54:00:12:34:56", address: "192.168.10.50", hostname: "mgmt-laptop" }
+      lan2:
+        enabled: false
+        range: { start: "192.168.20.150", end: "192.168.20.199" }
+      guest:
+        range: { start: "192.168.30.50", end: "192.168.30.250" }
+        leaseTime: "2h"
   logging:
     rotation: { maxFileSizeMb: 100, retentionDays: 30, compress: true }
     anonymizeSourceIp: { enabled: true, interfaces: ["guest"], ipv4MaskBits: 8 }

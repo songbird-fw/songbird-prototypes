@@ -1,0 +1,4 @@
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Service"
+metadata: { name: "udp9" }
+spec: { protocols: [{ protocol: "udp", port: 9 }] }

@@ -1,0 +1,4 @@
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Interface"
+metadata: {name: t}
+spec: {type: physical, device: eth0}

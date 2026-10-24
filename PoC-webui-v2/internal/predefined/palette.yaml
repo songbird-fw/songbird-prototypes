@@ -1,15 +1,6 @@
-# Predefined palette shipped with Songbird (songbird-yaml-schema examples/valid/objects/palette.yaml).
-# The hex values are fixed (R-055.1, DM-33); the comment says what a colour means in a given network.
-apiVersion: "config.songbird-fw.com/v1alpha1"
-kind: "Color"
-metadata: { name: "green", comment: "Backup / Veeam" }
-spec: { hex: "#2E7D32", predefined: true }
----
-apiVersion: "config.songbird-fw.com/v1alpha1"
-kind: "Color"
-metadata: { name: "blue", comment: "Main LAN" }
-spec: { hex: "#1565C0", predefined: true }
----
+# Predefined palette shipped with Songbird: 16 colours (team decision 2026-10-19; the original
+# 7 keep their hex). Same names and hex as PREDEFINED_PALETTE in songbird-fw/schema/validate.py.
+# The hex is fixed (R-055.1, DM-33); the comment says what a colour means in a given network.
 apiVersion: "config.songbird-fw.com/v1alpha1"
 kind: "Color"
 metadata: { name: "red", comment: "DMZ" }
@@ -17,8 +8,8 @@ spec: { hex: "#C62828", predefined: true }
 ---
 apiVersion: "config.songbird-fw.com/v1alpha1"
 kind: "Color"
-metadata: { name: "orange", comment: "Untrusted / Internet" }
-spec: { hex: "#EF6C00", predefined: true }
+metadata: { name: "pink" }
+spec: { hex: "#AD1457", predefined: true }
 ---
 apiVersion: "config.songbird-fw.com/v1alpha1"
 kind: "Color"
@@ -27,8 +18,63 @@ spec: { hex: "#6A1B9A", predefined: true }
 ---
 apiVersion: "config.songbird-fw.com/v1alpha1"
 kind: "Color"
+metadata: { name: "indigo" }
+spec: { hex: "#283593", predefined: true }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Color"
+metadata: { name: "blue", comment: "Main LAN" }
+spec: { hex: "#1565C0", predefined: true }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Color"
+metadata: { name: "cyan" }
+spec: { hex: "#0097A7", predefined: true }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Color"
 metadata: { name: "teal" }
 spec: { hex: "#00838F", predefined: true }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Color"
+metadata: { name: "green", comment: "Backup / Veeam" }
+spec: { hex: "#2E7D32", predefined: true }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Color"
+metadata: { name: "light-green" }
+spec: { hex: "#558B2F", predefined: true }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Color"
+metadata: { name: "lime" }
+spec: { hex: "#9E9D24", predefined: true }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Color"
+metadata: { name: "yellow" }
+spec: { hex: "#F9A825", predefined: true }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Color"
+metadata: { name: "amber" }
+spec: { hex: "#FF8F00", predefined: true }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Color"
+metadata: { name: "orange", comment: "Untrusted / Internet" }
+spec: { hex: "#EF6C00", predefined: true }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Color"
+metadata: { name: "deep-orange" }
+spec: { hex: "#D84315", predefined: true }
+---
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Color"
+metadata: { name: "brown" }
+spec: { hex: "#4E342E", predefined: true }
 ---
 apiVersion: "config.songbird-fw.com/v1alpha1"
 kind: "Color"

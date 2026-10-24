@@ -46,8 +46,11 @@ func main() {
 		log.Fatal(err)
 	}
 	store, err := configstore.Open(filepath.Join(*data, "config"), defaults.Tree)
+	if err == nil {
+		_, _, err = store.Read("HEAD")
+	}
 	if err != nil {
-		log.Fatalf("config repository: %v", err)
+		log.Fatalf("config repository: %v\n(a data directory written by an earlier version of the PoC uses the old layout and schema: delete %s to start over)", err, *data)
 	}
 	auditLog, err := audit.Open(filepath.Join(*data, "audit.log"))
 	if err != nil {
@@ -92,11 +95,11 @@ func main() {
 }
 
 // validateCmd is the Go prototype of `songbird validate <dir>` (R-052): the
-// same two layers and rule ids as songbird-yaml-schema/validate.py, plus the
+// same two layers and rule ids as songbird-fw/schema/validate.py, plus the
 // domain-model constraints. Exit 0 = valid, 1 = errors, 2 = usage.
 func validateCmd(args []string) int {
 	fs := flag.NewFlagSet("validate", flag.ContinueOnError)
-	appliance := fs.Bool("appliance", false, "also require what a running appliance has: System, the predefined palette, an admin User")
+	appliance := fs.Bool("appliance", false, "also require what a running appliance has: System, the predefined objects, an admin User")
 	quiet := fs.Bool("q", false, "do not print warnings")
 	if err := fs.Parse(args); err != nil || fs.NArg() != 1 {
 		fmt.Fprintln(os.Stderr, "usage: songbird-webui validate [-appliance] [-q] <dir>")

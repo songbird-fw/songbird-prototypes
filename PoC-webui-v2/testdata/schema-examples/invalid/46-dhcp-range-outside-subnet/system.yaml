@@ -1,0 +1,9 @@
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "System"
+metadata: { name: "system" }
+spec:
+  hostname: "fw01"
+  systemServices:
+    dns: { mode: "forwarder", upstreams: ["9.9.9.9"], listenOn: ["lan"] }
+    dhcp:
+      lan: { range: { start: "10.0.0.10", end: "10.0.0.20" } }

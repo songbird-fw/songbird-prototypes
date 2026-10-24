@@ -6,17 +6,16 @@ import "time"
 // global settings. Optional booleans are pointers so that an explicit false
 // survives a round trip.
 type SystemSpec struct {
-	Hostname    string       `yaml:"hostname" json:"hostname"`
-	Timezone    string       `yaml:"timezone,omitempty" json:"timezone,omitempty"`
-	Admin       *Admin       `yaml:"admin,omitempty" json:"admin,omitempty"`
-	NTP         *NTP         `yaml:"ntp,omitempty" json:"ntp,omitempty"`
-	DNS         *DNS         `yaml:"dns,omitempty" json:"dns,omitempty"`
-	Logging     *Logging     `yaml:"logging,omitempty" json:"logging,omitempty"`
-	Session     *Session     `yaml:"session,omitempty" json:"session,omitempty"`
-	NAT64       *NAT64       `yaml:"nat64,omitempty" json:"nat64,omitempty"`
-	Git         *Git         `yaml:"git,omitempty" json:"git,omitempty"`
-	Updates     *Updates     `yaml:"updates,omitempty" json:"updates,omitempty"`
-	ThreatFeeds *ThreatFeeds `yaml:"threatFeeds,omitempty" json:"threatFeeds,omitempty"`
+	Hostname       string          `yaml:"hostname" json:"hostname"`
+	Timezone       string          `yaml:"timezone,omitempty" json:"timezone,omitempty"`
+	Admin          *Admin          `yaml:"admin,omitempty" json:"admin,omitempty"`
+	SystemServices *SystemServices `yaml:"systemServices,omitempty" json:"systemServices,omitempty"`
+	Logging        *Logging        `yaml:"logging,omitempty" json:"logging,omitempty"`
+	Session        *Session        `yaml:"session,omitempty" json:"session,omitempty"`
+	NAT64          *NAT64          `yaml:"nat64,omitempty" json:"nat64,omitempty"`
+	Git            *Git            `yaml:"git,omitempty" json:"git,omitempty"`
+	Updates        *Updates        `yaml:"updates,omitempty" json:"updates,omitempty"`
+	ThreatFeeds    *ThreatFeeds    `yaml:"threatFeeds,omitempty" json:"threatFeeds,omitempty"`
 }
 
 type Admin struct {
@@ -53,10 +52,39 @@ type AdminUI struct {
 	Language string `yaml:"language,omitempty" json:"language,omitempty"`
 }
 
+// SystemServices are the network services the firewall provides to its
+// networks (R-058): DNS and NTP declare where they listen, DHCP has one pool
+// per Interface (schema design decisions 12 and 16).
+type SystemServices struct {
+	DNS  *DNS                `yaml:"dns,omitempty" json:"dns,omitempty"`
+	NTP  *NTP                `yaml:"ntp,omitempty" json:"ntp,omitempty"`
+	DHCP map[string]DhcpPool `yaml:"dhcp,omitempty" json:"dhcp,omitempty"` // key: Interface name
+}
+
 type NTP struct {
-	Enabled           bool     `yaml:"enabled" json:"enabled"`
-	Servers           []string `yaml:"servers,omitempty" json:"servers,omitempty"`
-	ServeToInterfaces []string `yaml:"serveToInterfaces,omitempty" json:"serveToInterfaces,omitempty"`
+	Enabled  bool     `yaml:"enabled" json:"enabled"`
+	Servers  []string `yaml:"servers,omitempty" json:"servers,omitempty"`
+	ListenOn []string `yaml:"listenOn,omitempty" json:"listenOn,omitempty"`
+}
+
+// DhcpPool is the DHCPv4 server of one Interface (R-017 … R-017.6).
+type DhcpPool struct {
+	Enabled      *bool             `yaml:"enabled,omitempty" json:"enabled,omitempty"`
+	Range        AddressRange      `yaml:"range" json:"range"`
+	LeaseTime    string            `yaml:"leaseTime,omitempty" json:"leaseTime,omitempty"`
+	Gateway      string            `yaml:"gateway,omitempty" json:"gateway,omitempty"`
+	DNSServers   []string          `yaml:"dnsServers,omitempty" json:"dnsServers,omitempty"`
+	NTPServers   []string          `yaml:"ntpServers,omitempty" json:"ntpServers,omitempty"`
+	Domain       string            `yaml:"domain,omitempty" json:"domain,omitempty"`
+	Reservations []DhcpReservation `yaml:"reservations,omitempty" json:"reservations,omitempty"`
+}
+
+func (p DhcpPool) IsEnabled() bool { return p.Enabled == nil || *p.Enabled }
+
+type DhcpReservation struct {
+	MAC      string `yaml:"mac" json:"mac"`
+	Address  string `yaml:"address" json:"address"`
+	Hostname string `yaml:"hostname,omitempty" json:"hostname,omitempty"`
 }
 
 type DNS struct {
@@ -67,7 +95,7 @@ type DNS struct {
 	LocalDomain           string           `yaml:"localDomain,omitempty" json:"localDomain,omitempty"`
 	LocalRecords          []DNSLocalRecord `yaml:"localRecords,omitempty" json:"localRecords,omitempty"`
 	DNS64                 *bool            `yaml:"dns64,omitempty" json:"dns64,omitempty"`
-	ServeToInterfaces     []string         `yaml:"serveToInterfaces,omitempty" json:"serveToInterfaces,omitempty"`
+	ListenOn              []string         `yaml:"listenOn,omitempty" json:"listenOn,omitempty"`
 }
 
 type DNSLocalRecord struct {
@@ -160,6 +188,28 @@ type ThreatFeed struct {
 }
 
 // ---- effective values (schema defaults applied) ----------------------------------------
+
+// DNS, NTP and DHCP return the System Services (nil / empty when absent).
+func (s SystemSpec) DNS() *DNS {
+	if s.SystemServices == nil {
+		return nil
+	}
+	return s.SystemServices.DNS
+}
+
+func (s SystemSpec) NTP() *NTP {
+	if s.SystemServices == nil {
+		return nil
+	}
+	return s.SystemServices.NTP
+}
+
+func (s SystemSpec) DHCP() map[string]DhcpPool {
+	if s.SystemServices == nil {
+		return nil
+	}
+	return s.SystemServices.DHCP
+}
 
 // HTTPSPort is the management port (DM-35), default 443.
 func (s SystemSpec) HTTPSPort() int {

@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=../../../songbird.schema.json
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "RuleSet"
+metadata:
+  name: "untrusted-to-dmz"
+  comment: "Published services (DNAT)"
+spec:
+  from: "untrusted"
+  to: "dmz-zone"
+  rules:
+    - name: "publish-nginx"
+      comment: "Public 443 -> nginx:8443"
+      source: ["any"]
+      destination: ["wan-ip"]          # matched BEFORE translation
+      service: ["https"]
+      action: "accept"
+      nat:
+        type: "dnat"
+        translateIpTo: "nginx"
+        translateServiceTo: "https-8443"

@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=../../../songbird.schema.json
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Service"
+metadata:
+  name: "dns"
+spec:
+  protocols:
+    - { protocol: "tcp", port: 53 }
+    - { protocol: "udp", port: 53 }

@@ -60,7 +60,7 @@ function loginPage() {
   const user = h('input', { autocomplete: 'username', value: '' });
   const pass = h('input', { type: 'password', autocomplete: 'current-password' });
   const err = h('div', { class: 'err', style: { color: 'var(--critical)', minHeight: '18px', fontSize: '13px' }, role: 'alert' });
-  const btn = h('button', { class: 'primary', type: 'submit', style: { justifyContent: 'center' } }, 'Sign in');
+  const btn = h('button', { class: 'primary', type: 'submit', style: { justifyContent: 'center', minHeight: '38px' } }, 'Sign in');
   const form = h('form', { class: 'card', onsubmit: async (e) => {
     e.preventDefault(); btn.disabled = true; err.textContent = '';
     try {
@@ -72,11 +72,11 @@ function loginPage() {
       btn.disabled = false; pass.select();
     }
   } },
-  h('div', { class: 'brand', style: { padding: 0 } }, h('span', { class: 'logo' }, icon('shield')), h('div', null, 'Songbird', h('small', null, 'Web UI proof of concept'))),
+  h('div', { class: 'title' }, h('span', { class: 'logo' }, icon('shield')), h('div', null, h('h1', null, 'Songbird'), h('small', null, 'Sign in to manage the firewall.'))),
   h('div', { class: 'field' }, h('label', null, 'Username'), user),
   h('div', { class: 'field' }, h('label', null, 'Password'), pass),
   err, btn,
-  h('div', { class: 'muted small' }, 'Demo accounts: admin / songbird (admin), auditor / auditor (read-only).'));
+  h('div', { class: 'muted small' }, 'Demo accounts: admin / songbird, or auditor / auditor for read-only access.'));
   mount(app, h('div', { class: 'login' }, form));
   setTimeout(() => user.focus(), 0);
 }
@@ -86,16 +86,18 @@ function shell() {
   content = h('div', { class: 'content' });
   banner = h('div');
   topStatus = h('div', { class: 'top' });
+  // icons only; the label appears on hover and keyboard focus
   const nav = h('nav', { class: 'nav', 'aria-label': 'Main' }, ROUTES.map((r) => r.group
-    ? h('div', { class: 'group' }, r.group)
-    : h('a', { href: `#/${r.path}`, 'data-path': r.path }, icon(r.icon), r.label)));
+    ? h('div', { class: 'group', role: 'separator', 'aria-label': r.group })
+    : h('a', { href: `#/${r.path}`, 'data-path': r.path, 'aria-label': r.label },
+      icon(r.icon), h('span', { class: 'label', 'aria-hidden': 'true' }, r.label))));
   mount(app, h('div', { class: 'shell' },
     h('aside', { class: 'side' },
-      h('div', { class: 'brand' }, h('span', { class: 'logo' }, icon('shield')), h('div', null, 'Songbird', h('small', null, 'firewall · PoC'))),
-      nav,
-      h('div', { class: 'foot' }, 'Config is YAML in Git', h('br'), h('code', null, 'config.songbird-fw.com/v1alpha1'), h('br'), 'Every save is a commit.')),
+      h('a', { class: 'brand', href: '#/dashboard', 'aria-label': 'Songbird', title: 'Songbird — configuration is YAML in Git, every save is a commit' }, h('span', { class: 'logo' }, icon('shield'))),
+      nav),
     h('div', { class: 'main' }, topStatus, banner, content)));
 }
+
 
 function stateBadge(s) {
   if (!s) return h('span', { class: 'badge' }, '…');
@@ -107,8 +109,8 @@ function stateBadge(s) {
 function findingsPill() {
   const f = findings();
   const errs = f.filter((e) => e.severity === 'error').length, warns = f.length - errs;
-  if (!f.length) return h('a', { class: 'pill', href: '#/diagnostics', title: 'HEAD passes the schema and every semantic rule' }, icon('check', 'ok-ico'), 'valid');
-  return h('a', { class: 'pill', href: '#/diagnostics', title: 'Validator findings on HEAD' },
+  if (!f.length) return h('a', { class: 'pill', href: '#/diagnostics', title: 'HEAD passes the schema and every semantic rule' }, h('span', { class: 'k' }, 'Validator'), icon('check', 'ok-ico'), 'valid');
+  return h('a', { class: 'pill', href: '#/diagnostics', title: 'Validator findings on HEAD' }, h('span', { class: 'k' }, 'Validator'),
     errs ? h('span', { class: 'badge bad' }, `${errs} error${errs > 1 ? 's' : ''}`) : null,
     warns ? h('span', { class: 'badge warn' }, `${warns} warning${warns > 1 ? 's' : ''}`) : null);
 }
@@ -117,12 +119,12 @@ function renderTop() {
   if (!topStatus) return;
   const s = state.status;
   mount(topStatus,
-    h('span', { class: 'pill', title: 'Desired state: HEAD of the configuration repository' }, 'Revision', h('code', null, short(state.config?.revision))),
-    stateBadge(s),
-    s && s.appliedCommit && s.appliedCommit !== s.desiredCommit && h('span', { class: 'pill' }, 'Running', h('code', null, short(s.appliedCommit))),
+    h('span', { class: 'pill', title: 'Desired state: HEAD of the configuration repository' }, h('span', { class: 'k' }, 'Revision'), h('code', null, short(state.config?.revision))),
+    h('span', { class: 'pill' }, h('span', { class: 'k' }, 'Reconciler'), stateBadge(s)),
+    s && s.appliedCommit && s.appliedCommit !== s.desiredCommit && h('span', { class: 'pill' }, h('span', { class: 'k' }, 'Running'), h('code', null, short(s.appliedCommit))),
     findingsPill(),
     h('span', { class: 'spacer' }),
-    h('span', { class: 'pill' }, icon('users'), state.me?.u, h('span', { class: 'muted' }, state.me?.r)),
+    h('span', { class: 'pill' }, h('span', { class: 'k' }, state.me?.r), state.me?.u),
     h('button', { class: 'ghost', onclick: toggleTheme, title: 'Toggle dark theme', 'aria-label': 'Toggle dark theme' }, icon(effectiveTheme() === 'dark' ? 'sun' : 'moon')),
     h('button', { class: 'ghost', title: 'Sign out', 'aria-label': 'Sign out', onclick: async () => { await api('POST', '/api/v1/logout').catch(() => {}); state.me = null; stop(); location.hash = '#/login'; } }, icon('logout')));
 
@@ -170,7 +172,12 @@ async function poll() {
   } catch { /* 401 handled in api() */ }
 }
 
-function rerender() { if (current && !document.querySelector('.overlay')) { if (leave) leave(); leave = current.page.render(content, location.hash.split('/').slice(2)) || null; } }
+function rerender() {
+  if (current && !document.querySelector('.overlay')) {
+    if (leave) leave();
+    leave = current.page.render(content, location.hash.split('/').slice(2)) || null;
+  }
+}
 
 // after any config reload, re-render the page (deferred so a dialog that
 // is closing after a save is gone first)

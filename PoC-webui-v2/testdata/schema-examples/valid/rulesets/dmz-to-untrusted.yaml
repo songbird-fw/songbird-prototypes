@@ -1,0 +1,10 @@
+# yaml-language-server: $schema=../../../songbird.schema.json
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "RuleSet"
+metadata:
+  name: "dmz-to-untrusted"
+  comment: "Empty on purpose: the DMZ has no Internet access (explicit, not just Default Deny)"
+spec:
+  from: "dmz-zone"
+  to: "untrusted"
+  rules: []

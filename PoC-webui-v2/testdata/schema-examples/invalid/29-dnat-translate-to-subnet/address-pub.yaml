@@ -1,0 +1,4 @@
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Address"
+metadata: { name: "pub" }
+spec: { subnet: "1.2.3.4/32" }

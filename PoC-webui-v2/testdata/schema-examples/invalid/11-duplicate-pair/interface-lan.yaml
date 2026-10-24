@@ -1,0 +1,4 @@
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Interface"
+metadata: { name: "lan" }
+spec: { type: "physical", device: "eth0" }

@@ -1,0 +1,4 @@
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Zone"
+metadata: {name: z1}
+spec: {interfaces: [lan]}

@@ -1,0 +1,7 @@
+# yaml-language-server: $schema=../../../songbird.schema.json
+apiVersion: "config.songbird-fw.com/v1alpha1"
+kind: "Address"
+metadata:
+  name: "google"
+spec:
+  fqdn: "www.google.com"

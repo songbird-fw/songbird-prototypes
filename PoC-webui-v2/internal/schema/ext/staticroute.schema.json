@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://config.songbird-fw.com/v1alpha1/staticroute.schema.json",
   "title": "StaticRoute",
-  "description": "PoC PROPOSAL, not part of songbird-yaml-schema v1alpha1 (listed there as 'Not covered yet'). Follows domain-model.md v0.6 StaticRoute (DM-22, DM-23, R-001.5). Among routes to the same destination the active one has the lowest distance, then the lowest priority; ties are rejected by the validator.",
+  "description": "PoC PROPOSAL, not part of the v1alpha1 schema (songbird-fw/schema) (listed there as 'Not covered yet'). Follows domain-model.md v0.7 StaticRoute (DM-22, DM-23, R-001.5). Among routes to the same destination the active one has the lowest distance, then the lowest priority; ties are rejected by the validator.",
   "x-songbird-status": "proposal",
   "type": "object",
   "additionalProperties": false,
