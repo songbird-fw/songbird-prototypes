@@ -1,5 +1,5 @@
-/* Songbird Web UI — clean technical drawing on white.
-   White ground, graphite text, hairline rules in cool grey, one drafting-blue
+/* Songbird Web UI — clean technical drawing.
+   Light theme Catppuccin Latte, dark theme Nord; hairline rules, one blue
    accent reserved for the active state and focus. Type: Instrument Sans for
    everything, IBM Plex Mono only for data (addresses, ports, revisions).
    Sentence case throughout; hierarchy comes from size and weight.
@@ -14,27 +14,29 @@
 
 :root {
   color-scheme: light;
-  --paper: #ffffff;
-  --sheet: #ffffff;
-  --sheet-2: #f5f6f8;
-  --sheet-3: #eceef1;
-  --rule: #e5e7ea;
-  --rule-strong: #c9cdd3;
-  --ink: #1c1f23;
-  --ink-2: #5b616a;
-  --ink-3: #8c929b;
-  --accent: #2251c7;          /* drafting blue: active state and focus only */
-  --accent-soft: #eef2fc;
-  --on-ink: #ffffff;
-  --good: #23784a;
-  --warning: #a86a0c;
-  --critical: #c0322a;
-  --good-soft: #eaf5ee;
-  --warning-soft: #fbf3e4;
-  --critical-soft: #fcecea;
-  --s1: #2251c7; --s2: #1c1f23; --s3: #4f9a8a; --s4: #c08a2e;
-  --diff-add: #eaf5ee; --diff-del: #fcecea;
-  --lift: 0 1px 2px rgba(28, 31, 35, .06), 0 12px 32px -12px rgba(28, 31, 35, .22);
+  /* Catppuccin Latte. Green and yellow are darkened (same hue) where they carry
+     text: the pure Latte values are under 3:1 on base. */
+  --paper: #e6e9ef;           /* mantle: page recessed */
+  --sheet: #eff1f5;           /* base: rail, bar and sections raised */
+  --sheet-2: #e6e9ef;         /* mantle */
+  --sheet-3: #dce0e8;         /* crust */
+  --rule: #ccd0da;            /* surface0 */
+  --rule-strong: #acb0be;     /* surface2 */
+  --ink: #4c4f69;             /* text */
+  --ink-2: #5c5f77;           /* subtext1 */
+  --ink-3: #7c7f93;           /* overlay2 */
+  --accent: #1e66f5;          /* blue: active state and focus only */
+  --accent-soft: #d6e0f5;
+  --on-ink: #eff1f5;
+  --good: #2c6d1d;            /* green, darkened */
+  --warning: #8a5812;         /* yellow, darkened */
+  --critical: #d20f39;        /* red */
+  --good-soft: #dae7dd;
+  --warning-soft: #ede5db;
+  --critical-soft: #ecd6de;
+  --s1: #1e66f5; --s2: #8839ef; --s3: #179299; --s4: #fe640b;  /* blue, mauve, teal, peach */
+  --diff-add: #dae7dd; --diff-del: #ecd6de;
+  --lift: 0 1px 2px rgba(76, 79, 105, .08), 0 12px 32px -12px rgba(76, 79, 105, .28);
   --sans: "Instrument Sans", "Helvetica Neue", system-ui, sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
   --rail: 60px;
@@ -357,7 +359,7 @@ a.button:hover { border-color: var(--ink-3); color: var(--ink); }
 .legend.card { margin-bottom: 18px; }
 
 /* ---- modal & toast ---- */
-.overlay { position: fixed; inset: 0; background: rgba(28, 31, 35, .32); display: grid; place-items: center; z-index: 50; padding: 16px; }
+.overlay { position: fixed; inset: 0; background: rgba(76, 79, 105, .32); display: grid; place-items: center; z-index: 50; padding: 16px; }
 .modal { background: var(--sheet); border-radius: 10px; width: min(780px, 100%); max-height: calc(100vh - 32px); display: flex; flex-direction: column; box-shadow: var(--lift); }
 .modal.narrow { width: min(460px, 100%); }
 .modal.wide { width: min(1000px, calc(100vw - 32px)); max-width: none; }

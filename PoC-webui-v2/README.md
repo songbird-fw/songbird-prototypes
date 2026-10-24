@@ -97,13 +97,15 @@ go run . validate -appliance ./data/config                       # also requires
 
 ## Style
 
-A clean technical drawing on white: graphite text, hairline rules in cool grey, one drafting-blue accent
-reserved for the active state and focus, no gradients or decoration. **Instrument Sans** for all text, in
+A clean technical drawing: hairline rules, one blue accent reserved for the active state and focus, no
+gradients or decoration. **Instrument Sans** for all text, in
 sentence case, with hierarchy carried by size and weight (the page title is the one large element);
 **IBM Plex Mono** only for data such as addresses, ports and revisions. The fonts are served by the binary
 (an appliance has no CDN), SIL OFL 1.1 (`web/fonts/`). The left rail shows icons only; labels appear on hover
-or focus. Light and dark themes share the same tokens (`web/style.css`); the dark theme uses the Nord palette
-(Polar Night grounds, Snow Storm text, Frost accent and primary buttons, Aurora states).
+or focus. Light and dark themes share the same tokens (`web/style.css`). The light theme uses Catppuccin
+Latte (mantle page, base sections, Text ink, Blue accent; Green and Yellow darkened for text, since the pure
+values are under 3:1 on base); the dark theme uses the Nord palette (Polar Night grounds, Snow Storm text,
+Frost accent and primary buttons, Aurora states).
 
 - **Colors.** As in FortiGate, an object's Color tints its name, not a swatch before it. Only Addresses,
   Services and their groups are coloured; Interfaces, Zones and RuleSets are not.
